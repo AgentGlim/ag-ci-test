@@ -6,7 +6,6 @@
 // A release-tag checkout or a tarball is not an update path: a tag needs `git checkout main` once, a tarball needs a
 // fresh clone (same data folder). See SETUP.md, Update.
 import path from 'node:path';
-import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -17,12 +16,19 @@ const git = (...args) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', t
 const say = (s) => console.log(s);
 const fail = (s) => { console.error(`update: ${s}`); process.exit(1); };
 
-const checkout = git('rev-parse', '--show-toplevel');
-let ownsCheckout = false;
-try { ownsCheckout = checkout.status === 0 && fs.realpathSync(checkout.stdout.trim()) === fs.realpathSync(ROOT); } catch {}
+// Is ROOT itself the top of a git work tree (not a tarball, and not an export nested inside some other checkout)?
+// Ask git with --show-prefix (empty exactly at the top level) instead of comparing path strings: git reports the
+// top level in its own spelling (forward slashes, long names), while ROOT may hold a Windows 8.3 short name such as
+// RUNNER~1 for the profile folder (GitHub's Windows runners put TEMP there), which fs.realpathSync does not expand.
+const checkout = git('rev-parse', '--is-inside-work-tree', '--show-prefix');
+const [inside, prefix] = (checkout.stdout || '').split(/\r?\n/);
+const ownsCheckout = checkout.status === 0 && inside === 'true' && prefix === '';
+const unsafe = checkout.status !== 0 && /safe\.directory|dubious ownership/i.test(checkout.stderr || '');
 
 if (dry) {
   say('dry run: not pulling; only the refresh below is previewed.');
+} else if (unsafe) {
+  fail(`git refuses this checkout because another user owns it ("dubious ownership"). Run \`git config --global --add safe.directory "${ROOT.replace(/\\/g, '/')}"\` once (or update as the folder's owner), then \`npm run update\`.`);
 } else if (!ownsCheckout) {
   fail('not a git checkout (a tarball or an export). Clone https://github.com/AgentGlim/agentglim.git and keep the same data folder.');
 } else {

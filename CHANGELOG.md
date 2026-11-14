@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.18
+
+- Fixed (Windows): `npm run update` said "not a git checkout" on a real clone when its path held an 8.3 short name (such as `RUNNER~1` for the profile folder on GitHub's Windows runners, whose TEMP uses the short form). It compared git's top-level path with its own path as strings, and git spells the long name. It now asks git directly (`git rev-parse --show-prefix` is empty only at the top level), so short names, slashes and case no longer matter; a copy nested inside another checkout is still refused. When git refuses the folder for "dubious ownership", update now says so and prints the `safe.directory` command instead of calling it a tarball.
+- Tests: the `~\` plans-path test no longer fails when HOME itself contains a `~` (8.3 short names); new `app/tests/v0218-wincifix.test.mjs` covers a git that spells the top level differently, the dubious-ownership message, a real 8.3 short path on Windows, and a HOME with a `~` in it.
+
 ## 0.2.17
 
 - Fixed (Windows): a plans path Setup saved as `~\\...` is now expanded (`app/paths.mjs` `expandHome`, used by setup, settings and the other `~` readers). Before, `npm run update` scaffolded into a literal `~` folder inside the repo and missed stale scheduled chats.

@@ -31,7 +31,8 @@ test('a saved ~\\ plans path resolves under HOME, not a literal ~ folder; harnes
   const code = `const p = await import(${url('app/paths.mjs')}); console.log(JSON.stringify({ plans: p.PLANS, run: p.RUN, info: p.pathsInfo() }));`;
   let r = nodeEval(code, env); assert.equal(r.status, 0, r.stderr);
   let j = JSON.parse(r.stdout);
-  assert.ok(!j.plans.includes('~'), j.plans); assert.ok(j.plans.startsWith(home));
+  // exactly HOME + plansdir: HOME itself may hold a ~ (8.3 short names such as RUNNER~1 on GitHub's Windows runners)
+  assert.ok(j.plans.startsWith(home), j.plans); assert.match(j.plans.slice(home.length), /^[\\/]plansdir$/, j.plans);
   fs.mkdirSync(path.join(home, 'cfg', 'agentglim'), { recursive: true });
   fs.writeFileSync(path.join(home, 'cfg', 'agentglim', 'harness.json'), JSON.stringify({ run: '{plans}/custom-run' }));
   r = nodeEval(code + `\nconst s = await import(${url('app/settings.mjs')}); console.log(s.harnessConfig().run);`, env); assert.equal(r.status, 0, r.stderr);
