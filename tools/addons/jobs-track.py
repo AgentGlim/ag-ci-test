@@ -8,6 +8,9 @@ which passes the wrapped command's exit code through).
   jobs-track start  --harness H [--plan NN-slug] [--model M] [--label L] [--cwd D] [--outdir O] [--pid P]
                     [--prompt-file F] [--prompt TEXT] [--kind autonomous|one-on-one|queue] [--id ID]
                     [--session-pid P]   (the SuperAgent's process: job is stopped if it dies)
+                    [--desc "one sentence"] [--quiet]   (done-ack: the finished-icon sentence; quiet = no icon)
+                    a "[task: ...]" prompt tag sets the sentence, "[quiet]" marks it quiet; AGENTGLIM_HEADLESS=1 records
+                    launchedBy.headless (helpers of headless agents get no finished icon)
                     prints the job id
   jobs-track finish --id ID [--rc N] [--status done|failed|stopped]
   jobs-track heartbeat --id ID
@@ -659,8 +662,43 @@ def nice_label(slug, parent=None):
 
 
 # ---------- commands ----------
+TASK_RE = re.compile(r"\[task:\s*([^\]]+)\]", re.I)
+QUIET_RE = re.compile(r"\[quiet\]", re.I)
+STRIP_TAGS = re.compile(r"\[(?:jev|plan|task|quiet)[^\]]*\]\s*", re.I)
+
+
+def one_sentence(t, cap=140):
+    t = re.sub(r"\s+", " ", STRIP_TAGS.sub("", t or "")).strip()
+    t = re.sub(r"^you are [^.]*\.\s*", "", t, flags=re.I)
+    m = re.match(r"^(.+?[.!?])(?:\s|$)", t)
+    if m:
+        t = m.group(1)
+    if len(t) > cap:
+        t = t[:cap - 1].rsplit(" ", 1)[0] + "\u2026"
+    return t
+
+
+def describe(desc=None, prompt_text="", label=None, slug_label=False, slug=None):
+    """done-ack: the one-sentence description written at launch -> (desc, descFrom). Order: --desc, [task: ...] tag,
+    a label of 3+ words not built from a slug, the prompt's first sentence, the slug."""
+    if desc:
+        return one_sentence(desc), "flag"
+    m = TASK_RE.search(prompt_text or "")
+    if m:
+        return one_sentence(m.group(1)), "tag"
+    lab = STRIP_TAGS.sub("", label or "").strip()
+    if lab and not slug_label and len(lab.split()) >= 3:
+        return one_sentence(lab), "label"
+    body = " ".join(l for l in (prompt_text or "").splitlines() if l.strip() and not l.lstrip().startswith("#"))
+    s = one_sentence(body)
+    if s and not re.match(r"^[\w./~-]+$", s):
+        return s, "prompt"
+    return (lab or nice_label(slug or "job")), "slug"
+
+
 def start(harness, model=None, label=None, cwd=None, outdir=None, pid=None, prompt_file=None,
-          prompt=None, kind=None, id=None, launcher=None, extra=None, session_pid=None, plan=None, req=None):
+          prompt=None, kind=None, id=None, launcher=None, extra=None, session_pid=None, plan=None, req=None,
+          desc=None, quiet=None, launched_by=None):
     cwd = os.path.abspath(cwd or os.getcwd())
     qplan, qstage = queue_req(req) if req else (None, None)
     plan = plan or qplan  # a queue take (headless-take.sh): the plan is in the .req name, NN-slug__stage (2026-11-12)
@@ -685,11 +723,20 @@ def start(harness, model=None, label=None, cwd=None, outdir=None, pid=None, prom
     slug = os.path.basename(outdir.rstrip("/")) if outdir else None
     lab = label or (nice_label(slug, os.path.basename(os.path.dirname(outdir.rstrip("/")))) if slug else None) \
         or (ptxt.strip().splitlines() or ["job"])[0][:80]
+    d, dfrom = describe(desc, ptxt, label, slug_label=not label, slug=slug)
     rec = {"id": rid, "project": project, "isPlan": is_plan, "projectFrom": how, "kind": kind or kind_of(pid),
-           "harness": harness, "model": model or None, "label": re.sub(r"\[(?:jev|plan)[^\]]*\]\s*", "", lab).strip()[:120],
+           "harness": harness, "model": model or None, "label": STRIP_TAGS.sub("", lab).strip()[:120],
+           "desc": d, "descFrom": dfrom,
            "slug": slug, "pid": pid, "pidStart": st[3] if st else None, "pgid": st[2] if st else None,
            "outdir": norm(outdir) or None, "cwd": norm(cwd), "promptFile": norm(prompt_file) or None, "launcher": launcher,
            "started": (proc_started_ms(st[3]) if st and pid != os.getpid() else None) or now_ms(), "heartbeat": now_ms(), "ended": None, "status": "running", "rc": None, "touches": 1}
+    if quiet not in (None, "", "0", False) or QUIET_RE.search(ptxt):
+        rec["quiet"] = True
+    lb = launched_by if isinstance(launched_by, dict) else None
+    if not lb and os.environ.get("AGENTGLIM_HEADLESS") == "1":
+        lb = {"harness": os.environ.get("AGENTGLIM_PARENT_HARNESS") or None, "headless": True}
+    if lb:
+        rec["launchedBy"] = lb
     if req:
         rec["req"] = norm(os.path.abspath(req))
     if session_pid:
@@ -1006,6 +1053,8 @@ def claude_hook(ev):
             sp = None
         start("claude", model=ti.get("model") or "inherit", label=ti.get("description") or None, cwd=ev.get("cwd"),
               prompt=ti.get("prompt") or "", id="cc-" + (tu or jid(now_ms())), launcher="claude Agent tool", kind="subagent",
+              launched_by={"harness": "claude", "sessionId": ev.get("session_id"), "agentId": ev.get("agent_id") or None,
+                           "headless": os.environ.get("AGENTGLIM_HEADLESS") == "1"},
               extra={"sessionId": ev.get("session_id"), "sessionPid": sp, "sessionPidStart": identity["start"] if identity else st[3] if st else None,
                      "subagentType": ti.get("subagent_type")})
     elif name == "PostToolUse" and ev.get("tool_name") == "Agent":
@@ -1037,7 +1086,10 @@ def claude_hook(ev):
 def run(argv):
     o, i = {}, 0
     while i < len(argv) and argv[i] != "--":
-        if argv[i].startswith("--") and i + 1 < len(argv):
+        if argv[i] == "--quiet":
+            o["quiet"] = "1"
+            i += 1
+        elif argv[i].startswith("--") and i + 1 < len(argv):
             o[argv[i][2:]] = argv[i + 1]
             i += 2
         else:
@@ -1082,13 +1134,17 @@ def start_run(o, cmd, pid, cwd):
     return start(o.get("harness") or os.path.basename(cmd[0]), model=o.get("model"), label=o.get("label") or " ".join(cmd)[:80],
                  cwd=o.get("cwd") or cwd, outdir=o.get("outdir"), pid=pid, prompt=o.get("prompt"),
                  prompt_file=o.get("prompt-file"), kind=o.get("kind"), launcher="jobs-track run", plan=o.get("plan"),
+                 desc=o.get("desc"), quiet=o.get("quiet"),
                  id="run-" + jid(pid, st[3] if st else 0))
 
 
 def opts(argv):
     o, i = {}, 0
     while i < len(argv):
-        if argv[i].startswith("--") and i + 1 < len(argv):
+        if argv[i] == "--quiet" and (i + 1 >= len(argv) or argv[i + 1].startswith("--")):
+            o["quiet"] = "1"
+            i += 1
+        elif argv[i].startswith("--") and i + 1 < len(argv):
             o[argv[i][2:].replace("-", "_")] = argv[i + 1]
             i += 2
         else:

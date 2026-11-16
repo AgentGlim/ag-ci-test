@@ -14,7 +14,11 @@ import { RUN } from '../paths.mjs';
 const APP = path.resolve(import.meta.dirname, '..');
 const JT = path.resolve(APP, '../tools/addons/jobs-track.py');
 const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-const AUDIT = path.join(RUN, 'bin', 'jobs-audit.mjs');
+// jobs-audit.mjs lives in the plans harness, not in this repo: prefer this repo's own copy (harness/bin) so the test pins a
+// copy that ships with the code, else use the installed run folder. Neither exists under release.sh's isolated HOME
+// (env -i, fresh HOME, no ~/.agentglim), so the test below is skipped there with a reason instead of failing on a file
+// this repo does not own.
+const AUDIT = [path.join(APP, '../harness/bin/jobs-audit.mjs'), path.join(RUN, 'bin', 'jobs-audit.mjs')].find((f) => fs.existsSync(f)) || path.join(RUN, 'bin', 'jobs-audit.mjs');
 
 test('headless-take jobs: NN-slug__stage under its plan with stage + model; observatory__* under SuperAgent', { skip: !fs.existsSync(JT) && 'jobs-track.py not installed' }, async (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-queue-jobs-'));
@@ -70,11 +74,16 @@ test('jobs-audit flags the 2026-11-12 bug (plan missing from Active builds, Unas
   const ps = [{ pid: 10, ppid: 1, tty: 0, ageS: 600, cmd: ['bash', '_run/bin/headless-take.sh', '_run/audit_queue/observatory__reject-x.req'] },
     { pid: 11, ppid: 10, tty: 0, ageS: 600, cmd: ['claude', '-p', '--model', 'claude-sonnet-5-5'] },
     { pid: 20, ppid: 1, tty: 0, ageS: 600, cmd: ['bash', '_run/bin/headless-take.sh', '_run/audit_queue/68-x-app__v10-focus.req'] },
-    { pid: 21, ppid: 20, tty: 0, ageS: 600, cmd: ['claude', '-p', '--model', 'claude-fable-5-1'] }];
+    { pid: 21, ppid: 20, tty: 0, ageS: 600, cmd: ['claude', '-p', '--model', 'claude-fable-5-1'] },
+    // 2026-11-13 (agent-icons fix): the SuperAgent row counts only its own takes, so the count rule needs one registered
+    // under "SuperAgent"; the 2026-11-12 shape above (a take filed under Unassigned) is covered by the unattributed check.
+    { pid: 30, ppid: 1, tty: 0, ageS: 600, cmd: ['bash', '_run/bin/headless-take.sh', '_run/audit_queue/observatory__reject-y.req'] },
+    { pid: 31, ppid: 30, tty: 0, ageS: 600, cmd: ['claude', '-p', '--model', 'claude-sonnet-5-5'] }];
   const state = { projects: { '68-x-app': { stage: 'v10-focus' } } };
   const before = await audit({ ps, state, plansDir: '/nonexistent', recs: [
     { id: 'a', status: 'running', pid: 10, project: 'Unassigned', isPlan: false, label: 'Reject x', model: 'claude-sonnet-5-5' },
-    { id: 'b', status: 'running', pid: 20, project: '68-x-app', isPlan: true, label: 'V10 focus', model: 'claude-opus-5-5' }],
+    { id: 'b', status: 'running', pid: 20, project: '68-x-app', isPlan: true, label: 'V10 focus', model: 'claude-opus-5-5' },
+    { id: 'c', status: 'running', pid: 30, project: 'SuperAgent', isPlan: false, label: 'Reject y', model: 'claude-sonnet-5-5' }],
   snap: { projects: [{ dir: '68-x-app', stage: 'done', endState: 'auto-complete', tracked: [{ id: 'b', model: 'claude-opus-5-5' }] }], otherRows: [{ dir: 'Unassigned', tracked: [{ id: 'a' }] }], watcherRow: { running: 0 } } });
   const has = (re) => before.problems.some((x) => re.test(x));
   assert.ok(has(/unattributed live job.*Unassigned/), before.problems.join('\n'));
@@ -84,8 +93,9 @@ test('jobs-audit flags the 2026-11-12 bug (plan missing from Active builds, Unas
   assert.ok(has(/SuperAgent row counts 0 headless/));
   const after = await audit({ ps, state, plansDir: '/nonexistent', recs: [
     { id: 'a', status: 'running', pid: 10, project: 'SuperAgent', isPlan: false, label: 'Reject x', model: 'claude-sonnet-5-5' },
-    { id: 'b', status: 'running', pid: 20, project: '68-x-app', isPlan: true, label: 'V10 focus', model: 'claude-fable-5-1' }],
+    { id: 'b', status: 'running', pid: 20, project: '68-x-app', isPlan: true, label: 'V10 focus', model: 'claude-fable-5-1' },
+    { id: 'c', status: 'running', pid: 30, project: 'SuperAgent', isPlan: false, label: 'Reject y', model: 'claude-sonnet-5-5' }],
   snap: { projects: [{ dir: '68-x-app', stage: 'v10-focus', liveBuild: { stage: 'v10-focus', models: ['claude-fable-5-1'] }, tracked: [{ id: 'b', model: 'claude-fable-5-1' }] }],
-    otherRows: [], watcherRow: { running: 2, headlessRunning: 2, tracked: [{ id: 'a', model: 'claude-sonnet-5-5' }] } } });
+    otherRows: [], watcherRow: { running: 2, headlessRunning: 2, tracked: [{ id: 'a', model: 'claude-sonnet-5-5' }, { id: 'c', model: 'claude-sonnet-5-5' }] } } });
   assert.deepEqual(after.problems, []);
 });

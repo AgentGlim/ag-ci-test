@@ -2,11 +2,15 @@
 
 ## Branches, pull requests and releases
 
-- `main` is the production branch and is protected: no direct pushes.
+- `main` is the production branch: use pull requests, not direct pushes. Maintainers must configure and verify
+  required status checks in GitHub; this document does not establish branch protection.
 - Work on a branch (`fix/...`, `feat/...`), push it and open a pull request into `main`.
-- CI (`.github/workflows/ci.yml`) must pass before merge: the privacy and leak scan, then the unit tests on Linux, macOS
-  and Windows.
+- CI (`.github/workflows/ci.yml`) must pass before merge: the privacy and leak scan, the unchanged Node/Python
+  matrix on Linux, macOS and Windows, and one Linux Chromium smoke lane.
 - Releases are annotated tags on `main`: `git tag -a vX.Y.Z -m "AgentGlim vX.Y.Z" && git push origin vX.Y.Z`.
+  Tag builds re-run the complete CI suite for that commit. Installers stay in a draft until all platforms and the
+  Linux native-window smoke pass; an already-public release is never overwritten by a rerun. See desktop/README.md
+  for the manual, main-only Rust cache pilot. Existing local release and approval gates still apply.
 
 ## Privacy check before every commit
 
@@ -22,7 +26,11 @@ on every pull request, so skipping the hook with `--no-verify` only moves the fa
 
 ## Checks and development
 
-Run `npm test` and `npm run privacy-check` before committing. The privacy checker scans tracked and publishable
+Run `npm test` and `npm run privacy-check` before committing. CI-only tools live in `dev/ci/`, with exact versions
+and a lockfile; they are not application runtime dependencies or desktop-bundled resources. Install them with
+`npm ci --prefix dev/ci --ignore-scripts --no-audit --no-fund`, then run `node --test dev/ci/tests/*.test.mjs` for the
+workflow contracts and publisher's fail-closed fixture tests. The browser workflow installs Chromium once and runs
+`skills-editor-xss`, `send-to-agent` and `inbox-resend` on isolated fixtures. It does not launch real agents. The privacy checker scans tracked and publishable
 untracked files for credentials, private names, home-folder paths and copied private goals. Set private names in
 `~/.config/agentglim/private-names.txt`; never commit that file. `node dev/leak-scan.mjs FOLDER` scans an export.
 These are contributor checks, not user onboarding steps.

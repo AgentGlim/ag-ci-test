@@ -76,6 +76,13 @@
     "_doc": "The Harness page inventory (a list of harness pieces). Missing file = the page shows settings and lanes only.",
     "manifest": "{agentglim}/harness/manifest.json"
   },
+  "doneAck": {
+    "_doc": "Finished-job icons that stay until seen (done-ack). minMinutes: shortest finished job that gets an icon (failures always do). keepDays: seen history before it moves to _archive. notify: off | failed | all desktop pop-ups, at most one a minute. maxPerRow: icons per row before a +N pill.",
+    "minMinutes": 2,
+    "keepDays": 30,
+    "notify": "failed",
+    "maxPerRow": 6
+  },
   "notify": {
     "_doc": "Desktop ping command, run as: command --event info --title TITLE BODY. Missing command = no ping.",
     "command": "agent-notify"

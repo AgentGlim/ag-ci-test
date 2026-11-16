@@ -49,7 +49,7 @@ kept. Custom run-folder files are preserved; managed notes and skills are refres
 | `AGENTGLIM_DATA` | `~/.agentglim` (`$AGENTGLIM_WORK/data` when `AGENTGLIM_WORK` is set) | history, caches, prices, approvals, goals, control state |
 | `AGENTGLIM_PLANS` | the plans folder saved in Setup, else `$AGENTGLIM_DATA/plans` | the plans folder the dashboard watches |
 | `AGENTGLIM_RUN` | `$AGENTGLIM_PLANS/_run` | the harness run folder |
-| `AGENTGLIM_PROJECTS` | `~/dev/projects` | your projects folder, for the optional panels |
+| `AGENTGLIM_PROJECTS` | `~/dev/projects` | your projects folder, for the optional per-project panels (tokens/$ and live agents) |
 
 These are read in `app/paths.mjs` once at start, so restart AgentGlim after changing them (Setup says so when you change the plans folder). `node tools/first-run.mjs paths` prints what the running configuration resolves to, including the listener command; agents should use that rather than guess. Panels whose folder is missing stay empty.
 
@@ -80,6 +80,31 @@ chmod 600 .env
 Every key is listed in `.env.example` with what it is for and whether it is optional. A key set in your shell or service
 environment wins over `.env`. `.env` is git-ignored; never commit it. An old `export NAME=...` line in `~/.bashrc` still
 works as a last fallback, but the server prints a note asking you to move it.
+
+## Send to agent hooks: what they change
+
+Optional. `node app/send-to-agent.mjs install-hooks --dry-run` shows the change first.
+
+- **Claude Code:** adds one `UserPromptSubmit` and one `Stop` entry to `~/.claude/settings.json` (or
+  `$CLAUDE_CONFIG_DIR/settings.json`, or the file you pass with `--settings`), each running
+  `node app/send-to-agent.mjs hook`. The file is backed up first to `settings.json.bak-agentglim-<time>`, your other
+  hooks are left alone, and a second run changes nothing.
+- **Undo:** `node app/send-to-agent.mjs uninstall-hooks` removes only these entries, or copy the backup back.
+- **Codex:** nothing is written. Codex only runs hooks you have trusted one by one, so answers go in with
+  `codex exec resume <id> -` instead; install/uninstall checks that your Codex supports it.
+- **Pi and OpenCode:** no hooks either. Send to agent delivers one resumed turn (`pi --session <id> -p`,
+  `opencode run --session <id>`) when the harness reports the session, and Copy is the fallback. A SuperAgent session
+  registers once with `node app/turn-delivery.mjs register --harness pi|opencode --session <id>`, and the server then
+  delivers each dashboard request there.
+
+Details: [SETUP.md](SETUP.md#send-to-agent-approvals).
+
+## Known gaps
+
+- Monitoring works on any machine. The Pipeline, routing and audit views read a plans folder written by your own
+  automation in this project's layout; there is no documented format or adapter for other orchestrators yet.
+- `next/` (the Rust daemon) is not the app you run today; the Node server in `app/` is.
+- Hooks exist for Claude Code only; Codex, Pi and OpenCode get one resumed turn per send instead (see above).
 
 ## Contributing
 

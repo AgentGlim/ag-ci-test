@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
+import { queryWindowsProcess } from './windows-processes.mjs';
 
 // One proc-root switch for every process read (R9.1). AGENTGLIM_PROC points tests and
 // fixture runs at a recorded tree; a platform without procfs has no root at all.
@@ -31,6 +32,27 @@ export function readStat(pid, root = procRoot()) {
   const rest = raw.slice(close + 2).trim().split(/\s+/);
   return { pid: Number(pid), comm: raw.slice(open + 1, close), state: rest[0], ppid: Number(rest[1]),
     pgid: Number(rest[2]), tty: Number(rest[4]), starttime: Number(rest[19]), raw };
+}
+
+// Match jobs-track's native start identity without converting FILETIME to a lossy Number.
+// A fixture root always wins; an absent fixture pid must never consult the real host.
+export function readProcessStat(pid, root = procRoot(), { platform = process.platform, run = execFileSync } = {}) {
+  if (root) return readStat(pid, root);
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return null;
+  if (platform === 'win32') {
+    const row = queryWindowsProcess(Number(pid), run);
+    return row ? { pid: Number(pid), state: 'S', starttime: row.start } : null;
+  }
+  if (platform === 'darwin') {
+    try {
+      const fields = run('ps', ['-p', String(pid), '-o', 'stat=,ppid=,pgid=,lstart='], {
+        encoding: 'utf8', timeout: 3000, env: { ...process.env, LC_ALL: 'C' },
+      }).trim().split(/\s+/);
+      if (fields.length !== 8) return null;
+      return { pid: Number(pid), state: fields[0][0], ppid: Number(fields[1]), pgid: Number(fields[2]), starttime: fields.slice(3).join(' ') };
+    } catch { return null; }
+  }
+  return null;
 }
 
 export function readCmdline(pid, root = procRoot()) {

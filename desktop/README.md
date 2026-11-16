@@ -141,3 +141,38 @@ to confirm that server survives the window closing.
 Windows NSIS/MSI installers and uploads them to the GitHub Release when a
 `v*` tag is pushed. Set the version in both `Cargo.toml` and
 `tauri.conf.json` before tagging. The workflow does not run on ordinary pushes.
+
+CI uses the prebuilt `@tauri-apps/cli@2.12.4` npm package through `npx`, rather
+than compiling the CLI with `cargo install`. The application still builds with
+Rust stable and `--locked`. The Cargo CLI installation above remains an option
+for local builds.
+
+### Release checks and the cache pilot
+
+Tag releases call the complete CI workflow on the tagged commit, including the
+browser smoke lane. A preflight refuses to upload to an already-published
+release. Installer builds upload to a draft; the Linux cell then runs the native
+window/server-lifecycle smoke with Xvfb. The final publisher requires every
+platform to pass, verifies all five installer formats and checks that the tag
+still names the tested commit before making the draft public. A failed check
+leaves a draft, not a published release. Same-tag runs do not cancel a release
+that is already in progress.
+
+`desktop-cache.yml` is a manual pilot, restricted to `main`. After the reviewed
+workflow reaches main, an authorized maintainer can start it with:
+
+```sh
+gh workflow run desktop-cache.yml --ref main
+```
+
+Run it twice and compare the step summaries (exact cache hit and build seconds).
+The warmer compiles the release profile without bundling or publishing. It and
+the tag builds share the same OS/architecture-aware Rust cache configuration;
+only main saves a cache. The cache holds Cargo dependencies, not private runtime
+data or staged server resources. The warmer does not run the desktop smoke, so
+smoke runtime data never enters a saved cache. Tags restore only.
+
+No automatic warm-up schedule is enabled. Measure warm-up cost and a subsequent
+release before claiming a saving. Ordinary pull requests retain all existing
+Node/Python/platform combinations. Native macOS/Windows launch testing and the
+remaining standalone browser specs are separate follow-up work.

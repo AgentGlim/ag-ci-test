@@ -52,7 +52,7 @@ function stageAllowlist(dest) {
     fs.mkdirSync(path.dirname(path.join(dest, to)), { recursive: true });
     fs.copyFileSync(abs, path.join(dest, to));
   };
-  for (const [src, to] of keep) if (fs.existsSync(path.join(ROOT, src))) copy(path.join(ROOT, src), src, to);
+  for (const [src, to] of keep) if (fs.existsSync(path.join(ROOT, src))) copy(path.join(ROOT, src), src.replace(/\/+$/, ''), to.replace(/\/+$/, ''));
 }
 
 // temp HOME, no key, no machine paths: a staged export looks like a fresh install

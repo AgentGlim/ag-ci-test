@@ -1,0 +1,59 @@
+name: Browser smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: browser smoke
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_MODULE: ${{ github.workspace }}/dev/ci/node_modules/playwright
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dev/ci/package-lock.json
+      - name: Install pinned CI tools
+        run: npm ci --prefix dev/ci --ignore-scripts --no-audit --no-fund
+      - name: CI policy and publisher fixture tests
+        run: node --test dev/ci/tests/*.test.mjs
+      - name: Install Chromium and system dependencies
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+        run: dev/ci/node_modules/.bin/playwright install --with-deps chromium
+      - name: Fixture-backed browser smoke
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser-home" "$RUNNER_TEMP/browser-tmp" "$RUNNER_TEMP/browser-smoke"
+          export HOME="$RUNNER_TEMP/browser-home" USERPROFILE="$RUNNER_TEMP/browser-home"
+          export TMPDIR="$RUNNER_TEMP/browser-tmp" TEMP="$RUNNER_TEMP/browser-tmp" TMP="$RUNNER_TEMP/browser-tmp"
+          failed=0
+          for spec in skills-editor-xss send-to-agent inbox-resend; do
+            log="$RUNNER_TEMP/browser-smoke/$spec.log"
+            if timeout --kill-after=10s 120s node "app/tests/$spec.spec.mjs" > "$log" 2>&1; then
+              echo "PASS: $spec"
+            else
+              cat "$log"
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-diagnostics
+          path: |
+            ${{ runner.temp }}/browser-smoke/
+            app/tests/out/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,10 +1,11 @@
 name: CI
 
-# Runs on every pull request and every push to main. Branch protection on main requires these checks to pass.
+# Required tests, reusable by releases so the exact tagged commit is verified.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -69,11 +70,17 @@ jobs:
           for f in app/*.mjs dev/*.mjs harness/*.mjs harness/bin/*.mjs tools/*.mjs; do [ -e "$f" ] || continue; node --check "$f" || exit; done
           for f in harness/bin/*.sh tools/*.sh; do [ -e "$f" ] || continue; bash -n "$f" || exit; done
       - name: unit tests
+        if: runner.os != 'Linux'
         run: npm test
+      # Run Linux once, with the stricter warning policy, rather than repeating the whole suite.
       # Removed or changed Python APIs surface here first, before a macOS-only run finds them.
       - name: unit tests (Python deprecations are errors, Linux only)
         if: runner.os == 'Linux'
         run: PYTHONWARNINGS=error::DeprecationWarning npm test
+
+  browser:
+    needs: privacy
+    uses: ./.github/workflows/browser.yml
 
   # The published copy as a user gets it: a fresh clone in another folder, a stamped release version (not "dev"),
   # an isolated HOME and TMPDIR, on macOS and Windows where path and process differences show up.

@@ -230,6 +230,9 @@ tr:hover td{background:var(--panel2)}
 .pipe{display:grid;grid-template-columns:minmax(280px,2.8fr) repeat(10,minmax(14px,.48fr)) minmax(70px,.8fr) minmax(60px,.6fr) minmax(70px,.9fr);gap:4px 6px;align-items:center;font-size:12px}/* stage bars shorter, more room for the project name  */
 .pipe .h{color:var(--ink3);font-size:10.5px;text-align:center;text-transform:uppercase;letter-spacing:.04em}
 .pipe .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
+/* feature sub-rows now lead with the short F-number, so the title gets the rest of the column and wraps instead of
+   being cut off (BUILD-FEATURE-NUMBERS-20261116: the row shows the number and the full title) */
+.pipe .name.sub{white-space:normal;overflow:visible;line-height:1.35}
 .dot{height:10px;border-radius:4px;background:var(--panel2);border:1px solid var(--line)}
 .dot.done{background:var(--progress-done);border-color:var(--progress-done)}
 .dot.now{--c:var(--free);background:var(--g,var(--c));border-color:var(--c);box-shadow:0 0 7px 1px var(--c);animation:flash 1.2s ease-in-out infinite}
@@ -359,6 +362,34 @@ tr:hover td{background:var(--panel2)}
 @media(max-width:600px){.pipe .name.cph{white-space:normal}.pipe .name.cph a.pl{white-space:nowrap}.pipe .name.cph .cpt{margin-left:0}}
 .rev{font:600 10px/1.4 var(--mono);padding:0 4px;border-radius:5px;border:1px solid currentColor;margin-right:5px}
 .pipe .who{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+/* done-ack (2026-11-14): finished-job icons that stay until seen. Ring + badge (variant 1A), detail-card tip (2C),
+   row Clear (3C), side panel (4B), all-seen next to the chip (5B) and in the panel footer (5C) */
+.fin{position:relative;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer;vertical-align:middle;flex:none;--c:var(--free)}
+.fin.bad{--c:var(--bad)}
+.fin .lg{display:inline-flex;width:20px;height:20px;border-radius:50%;border:2px solid var(--c);align-items:center;justify-content:center;background:var(--panel)}
+.fin .lg svg{width:12px;height:12px}
+.fin .bd{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}
+.fin .bd svg{width:8px;height:8px}
+.fin:focus-visible,.dnchip:focus-visible,.dnpanel .btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.dnmore{font-size:10.5px;color:var(--ink2);border:1px solid var(--line);border-radius:9px;padding:0 6px;background:var(--panel2);cursor:pointer;font-family:inherit}
+.btn.dnsm{padding:1px 8px;font-size:11px;border-radius:7px}
+.dnclr{margin-left:4px}
+.dnchip{border:1px solid color-mix(in srgb,var(--free) 30%,transparent);border-radius:999px;padding:2px 10px;font:600 11.5px var(--sans);color:var(--free);background:color-mix(in srgb,var(--free) 14%,transparent);cursor:pointer}
+.dnchip .f{color:var(--bad)}.dnchip.undo{color:var(--ink);border-color:var(--line);background:var(--panel2)}
+.tip .kv{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;margin-top:5px;font-size:11.5px}.tip .kv i{font-style:normal;color:var(--ink3)}
+.dnpanel{position:fixed;top:0;right:0;bottom:0;width:min(380px,100vw);z-index:8;background:var(--panel2);border-left:1px solid var(--line);box-shadow:-10px 0 30px rgba(0,0,0,.45);padding:14px 16px;overflow:auto;font-size:12.5px;animation:dnslide .18s ease-out;box-sizing:border-box}
+.dnpanel[hidden]{display:none}
+@keyframes dnslide{from{transform:translateX(30px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.dnpanel{animation:none}}
+.dnpanel .trh{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.dnpanel .tt{background:none;border:0;color:var(--ink3);font:600 12px var(--sans);cursor:pointer;padding:2px 4px;border-bottom:2px solid transparent}.dnpanel .tt.on{color:var(--ink);border-color:var(--info)}
+.dnpanel .x{margin-left:auto}
+.dnti{display:grid;grid-template-columns:16px 16px minmax(0,1fr);gap:2px 7px;padding:8px 0;border-top:1px solid var(--line)}
+.dnti .mk{font-weight:700;color:var(--free)}.dnti .mk.bad{color:var(--bad)}
+.dnti .s{color:var(--ink2);overflow-wrap:anywhere}.dnti .acts{grid-column:3;display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
+.dnti .acts a{text-decoration:none}
+.dnpanel .empty{color:var(--ink3);padding:8px 0}
+.dnpanel .trf{border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
 .ico{display:inline-flex;width:16px;height:16px;vertical-align:-3px;flex:none}
 .ico svg{width:100%;height:100%}
 .card.b-claude{border-color:var(--b-claude);box-shadow:0 0 14px -4px var(--b-claude)}
@@ -546,6 +577,8 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
 .tip{position:fixed;pointer-events:none;background:var(--tooltip-bg);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;color:var(--ink);opacity:0;transition:opacity .12s;z-index:9}
 @media (max-width:1100px){.kpis,.four,.limits{grid-template-columns:repeat(2,minmax(0,1fr))}.two{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){.wrap{padding:16px}.kpis,.four,.cols2,.limits{grid-template-columns:minmax(0,1fr)}.pipe{grid-template-columns:minmax(110px,1fr) repeat(10,minmax(10px,1fr))}.pipe .xc{display:none}}
+/* done-ack: on phones the WORKING column is hidden, so a row with finished icons shows them on a line of their own */
+@media (max-width:600px){.pipe .who.xc:has(.fin){display:flex;flex-wrap:wrap;gap:4px;align-items:center;grid-column:1/-1;padding-left:10px}.pipe .who.xc:has(.fin) .ico:not(.fin .ico){display:none}}
 /* Containers card (v3): fleet snapshot, view only. Every snapshot string is set with textContent. */
 #fleet .fchips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
 #fleet .fchips .chip{font-variant-numeric:tabular-nums}
@@ -656,6 +689,7 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
         <a class="pgm-i" role="menuitem" href="/roles" data-tip="Who can do what: allowed models for each job role and effective choices for every plan">Roles</a>
         <a class="pgm-i" role="menuitem" href="/routing" data-tip="Jev routing: which model and reasoning level each subagent got, cost view and your feedback">Routing</a>
         <a class="pgm-i" role="menuitem" href="/process-guard" data-tip="Process guard: AI agent activity, and long-running AI-started processes to stop or allow">Process guard</a>
+        <a class="pgm-i" role="menuitem" href="/alerts" target="_blank" rel="noopener" data-tip="Alerts: every harness alert grouped by failure cause, with counts, first and last seen, and one reply per digest">Alerts</a>
         <details class="pgm-arch dev-only"><!-- dev-only: stripped by server.mjs in production --><summary class="pgm-i" style="opacity:.6;cursor:pointer">Archived</summary>
         <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/harness" data-tip="Harness: where each harness piece lives, worker lanes, Jev rules, disk guard, local model, SuperAgent queues and skills">Harness</a>
         <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/control" data-tip="Live sessions: chat, terminal, controls and the SuperAgent thread (plan 55 control)">Control</a>
@@ -755,7 +789,7 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
   </section>
 
   <section class="card sfold" data-sk="act" id="actCard" style="margin-top:14px;animation-delay:.24s" hidden>
-    <h2 class="stg"><span class="cv">▾</span>Active builds<span class="mini">one build round, then your audit, then the final verifier</span></h2>
+    <div class="sth"><h2 class="stg"><span class="cv">▾</span>Active builds<span class="mini">one build round, then your audit, then the final verifier</span></h2><span class="stctl" id="dnCtl"></span></div>
     <div class="pipe act" id="actPipe"></div>
   </section>
 
@@ -792,6 +826,7 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
   </section>
 </div>
 <div class="tip" id="tip"></div>
+<aside class="dnpanel" id="dnPanel" hidden aria-label="Finished jobs"></aside>
 <script src="/model-icons.js"></script>
 <script src="/plan-icons.js"></script>
 <script>
@@ -969,6 +1004,10 @@ function bindTips(root) {
   root.querySelectorAll('[data-tip]').forEach((el) => {
     el.addEventListener('mouseenter', () => { tip.innerHTML = el.dataset.tip; tip.style.opacity = 1; });
     el.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+    // keyboard focus shows the tip too (done-ack buttons and any focusable tip owner)
+    el.addEventListener('focus', () => { tip.innerHTML = el.dataset.tip; tip.style.opacity = 1; const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      tip.style.left = Math.min(Math.max(8, r.left), innerWidth - w - 8) + 'px'; tip.style.top = (r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px'; });
+    el.addEventListener('blur', () => { tip.style.opacity = 0; });
   });
 }
 
@@ -1730,21 +1769,145 @@ function tjHtml(list, feats, key) {
 }
 // Sub-tasks: a project's tracked hand-offs (subagents, agent.sh, queue takes) as rows formatted like the
 // sub-items: one collapsible "Sub-tasks" head, running ones on top, finished ones folded behind "N done, hidden (show)".
-// Each row wears the model icon of the agent that ran it; the project row shows the icons of its running sub-tasks.
+// Sub-task rows and the summary line carry no icons; the project row shows one icon per running process.
 const TJ_PROV = { claude: 'anthropic', 'claude-cloud': 'claude-cloud', codex: 'codex', pi: 'pi', opencode: 'opencode', antigravity: 'antigravity' };
 const tjIco = (j, dim) => { const m = /^(session|inherit|premium)$/.test(j.model || '') ? 'claude-opus-5-5' : j.model === 'sonnet' ? 'claude-sonnet-5-5' : j.model === 'haiku' ? 'claude-haiku-5-5' : j.model === 'opus' ? 'claude-opus-5-5' : j.model === 'opus48' ? 'claude-opus-4-8' : j.model;
   const h = ico(pk(TJ_PROV[j.harness] || j.harness || 'anthropic', m), `<b>${esc(j.label)}</b><br>${esc(TJ_HARNESS[j.harness] || j.harness || '')}${j.model ? ` · ${esc(j.model)}` : ''}<br>${esc(j.status || 'done')}`);
   return dim ? h.replace('class="ico"', 'class="ico pz"') : h; };
 const tjIcons = (list) => (list || []).filter((j) => j.status === 'running').map((j) => tjIco(j)).join('');
+
+// ---------- done-ack (2026-11-14): finished jobs stay as icons until seen ----------
+// Server: app/done-ack.mjs (notices in <data>/done-ack). Owner picks: 1A ring + badge, 2C detail-card tip,
+// 3A click marks seen + 3C row "Clear N", 4B side panel, 5B "all seen" by the chip + 5C panel footer.
+const dnHidden = new Set(); let dnUndo = null, dnUndoT = 0, dnTab = 'unseen', dnData = null, dnAt = 0, dnTouch = false, dnTipFor = null;
+const DN_BASE_TITLE = document.title;
+const dnCHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="var(--bg)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const dnBANG = '<svg viewBox="0 0 24 24"><path d="M12 5v9M12 18.5v.5" fill="none" stroke="var(--bg)" stroke-width="3.6" stroke-linecap="round"/></svg>';
+const dnModel = (j) => /^(session|inherit|premium)$/.test(j.model || '') ? 'claude-opus-5-5' : j.model === 'sonnet' ? 'claude-sonnet-5-5' : j.model === 'haiku' ? 'claude-haiku-5-5' : j.model === 'opus' ? 'claude-opus-5-5' : j.model === 'opus48' ? 'claude-opus-4-8' : j.model;
+const dnHm = (t) => t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?';
+const dnTook = (ms) => ms == null ? '?' : ms < 90e3 ? `${Math.round(ms / 1e3)} s` : ms < 5400e3 ? `${Math.round(ms / 60e3)} min` : `${(ms / 3600e3).toFixed(1)} h`;
+const dnOut = (j) => j.outcome === 'done' ? 'Finished' : j.outcome === 'stopped' ? `Stopped${j.endReason ? `: ${j.endReason}` : ''}` : (j.tookMs != null && j.tookMs < 30e3) ? `Did not start${j.rc != null ? ` (exit ${j.rc})` : ''}` : `Failed${j.rc != null ? ` (exit ${j.rc})` : ''}`;
+const dnWho = (j) => `${TJ_HARNESS[j.harness] || j.harness || ''}${j.model ? ` · ${dnModel(j)}` : ''}`;
+const dnEffort = (j) => j.effort ? ` · ${j.effort} effort` : '';
+const dnModelTip = (j) => `${TJ_HARNESS[j.harness] || j.harness || 'agent'}${j.model ? ` · ${dnModel(j)}` : ''}${dnEffort(j)}`;
+const dnModelIco = (j) => ico(pk(TJ_PROV[j.harness] || j.harness || 'anthropic', dnModel(j)), dnModelTip(j));
+const dnDesc = (j) => j.desc && j.desc.toLowerCase() !== String(j.label || '').toLowerCase() ? j.desc : '';
+const dnTipHtml = (j) => `<b>${esc(j.label)}</b>${dnDesc(j) ? `<br>${esc(dnDesc(j))}` : ''}<div class="kv"><i>Outcome</i><span style="color:var(--${j.outcome === 'done' ? 'free' : 'bad'})">${esc(dnOut(j))}</span><i>Ended</i><span>${dnHm(j.ended)}</span><i>Took</i><span>${dnTook(j.tookMs)}</span><i>Model</i><span>${esc(dnWho(j))}</span>${j.result ? `<i>Result</i><span>${esc(j.result)}</span>` : ''}</div><span class="meta">Click to mark as seen</span>`;
+const dnIco = (j) => { const bad = j.outcome !== 'done', inner = (ico(pk(TJ_PROV[j.harness] || j.harness || 'anthropic', dnModel(j))).match(/<svg[\s\S]*<\/svg>/) || [''])[0];
+  return `<button type="button" class="fin${bad ? ' bad' : ''}" data-dk="${esc(j.key)}" data-tip="${esc(dnTipHtml(j))}" aria-label="${esc(`${bad ? dnOut(j) : 'Finished'}: ${j.desc || j.label}. Mark as seen`)}"><span class="lg">${inner}</span><i class="bd">${bad ? dnBANG : dnCHECK}</i></button>`; };
+// the row's finished icons (failed first, newest first; at most maxPerRow, then +N) and its "Clear N" button
+function dnCell(p) {
+  const keys = (p.doneAckKeys || []).filter((k) => !dnHidden.has(k)); if (!keys.length) return '';
+  const items = (p.doneAck || []).filter((j) => !dnHidden.has(j.key)), more = keys.length - items.length, row = p.dnRow || p.dir;
+  return items.map(dnIco).join('') + (more > 0 ? `<button type="button" class="dnmore" data-dnpanel="1" data-tip="${esc(`${more} more finished job${more === 1 ? '' : 's'} on this row: open the list`)}">+${more}</button>` : '')
+    + `<button type="button" class="btn dnsm dnclr" data-dnrow="${esc(row)}" data-tip="${esc(`Mark the ${keys.length} finished job${keys.length === 1 ? '' : 's'} on this row as seen`)}">Clear ${keys.length}</button>`;
+}
+const dnCount = (s) => { const d = s?.doneAck || {}, k = (d.keys || []).filter((x) => !dnHidden.has(x)), f = (d.failedKeys || []).filter((x) => !dnHidden.has(x)); return { n: k.length, f: f.length, keys: k }; };
+function dnChrome(s) {
+  const c = dnCount(s), el = $('dnCtl'); if (!el) return;
+  if (dnUndo) el.innerHTML = `<button type="button" class="dnchip undo" data-dnundo="1">Marked seen · Undo</button>`;
+  else if (!c.n) el.innerHTML = '';
+  else { const ok = c.n - c.f;
+    el.innerHTML = `<button type="button" class="dnchip" data-dnpanel="1" aria-expanded="${!$('dnPanel').hidden}" data-tip="${esc('Finished jobs you have not seen yet: open the list')}">${ok ? `${ok} finished` : ''}${ok && c.f ? ' · ' : ''}${c.f ? `<span class="f">${c.f} failed</span>` : ''}</button><button type="button" class="btn dnsm" data-dnall="1" data-tip="${esc(`Mark all ${c.n} as seen (only what is on screen now; Undo for 6 s)`)}">&#10003; all seen</button>`; }
+  bindTips(el);
+  document.title = (c.n ? `(${c.n}) ` : '') + DN_BASE_TITLE;
+  if (!$('dnPanel').hidden && Date.now() - dnAt > 10e3) dnLoad();
+}
+const dnFocusKey = () => { const a = document.activeElement; if (!a || !$('actCard')?.contains(a)) return null; for (const k of ['data-dk', 'data-dnrow', 'data-dnpanel']) if (a.hasAttribute(k)) return [k, a.getAttribute(k)]; return null; };
+const dnRefocus = (f) => { if (!f) return; const n = document.querySelector(`#actCard [${f[0]}="${CSS.escape(f[1])}"]`); if (n) n.focus({ preventScroll: true }); };
+async function dnPost(body) {
+  const r = await fetch('/api/done-ack', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error('HTTP ' + r.status); return r.json();
+}
+const dnRedraw = () => { if (lastState) { try { pipe(lastState); } catch (e) { console.error(e); } } if (!$('dnPanel').hidden) dnPanelDraw(); };
+function dnSetUndo(keys) { clearTimeout(dnUndoT); dnUndo = keys.length ? keys : null; dnUndoT = setTimeout(() => { dnUndo = null; dnRedraw(); }, 6000); }
+// mark seen: optimistic (the icons leave at once) and back if the request fails
+async function dnAck(body, guessKeys) {
+  guessKeys.forEach((k) => dnHidden.add(k)); tip.style.opacity = 0; dnRedraw();
+  try { const r = await dnPost({ action: 'ack', ...body }); r.changed.forEach((k) => dnHidden.add(k)); dnSetUndo(r.changed.length ? r.changed : guessKeys); }
+  catch { guessKeys.forEach((k) => dnHidden.delete(k)); }
+  dnAt = 0; dnRedraw();
+}
+async function dnUnack(keys) {
+  try { await dnPost({ action: 'unack', keys }); keys.forEach((k) => dnHidden.delete(k)); } catch {}
+  clearTimeout(dnUndoT); dnUndo = null; dnAt = 0;
+  // the next snapshot brings the icons back; ask for a fresh one now
+  connect(); dnRedraw();
+}
+async function dnLoad() {
+  dnAt = Date.now();
+  try { dnData = await (await fetch(`/api/done-ack?state=${dnTab}&limit=200`)).json(); } catch { dnData = { items: [], unseen: 0, seen: 0 }; }
+  dnPanelDraw();
+}
+const DN_HOW = { click: 'clicked', bulk: 'mark all seen', row: 'row cleared', report: 'opened the report', 'chat-ref': 'in chat (job reference)', superseded: 'replaced by a newer run' };
+function dnPanelDraw() {
+  const el = $('dnPanel'), d = dnData || { items: [] };
+  const items = d.items.filter((j) => dnTab === 'seen' || !dnHidden.has(j.key));
+  const it = (j) => { const bad = j.outcome !== 'done', how = j.seen ? (j.seen.via === 'chat' ? `in chat: “${j.seen.quote || ''}”` : DN_HOW[j.seen.via] || j.seen.via || 'seen') : '';
+    return `<div class="dnti"><span class="mk${bad ? ' bad' : ''}">${bad ? '!' : '&#10003;'}</span><span class="dnmi">${dnModelIco(j)}</span><div><b>${esc(j.label)}</b> <span class="meta">${esc(j.row || j.project || '')} · ${esc(dnOut(j))} ${dnHm(j.ended)} · ${dnTook(j.tookMs)} · ${esc(dnWho(j))}</span><div class="s">${esc(dnDesc(j))}${j.result ? ` <span class="meta">${esc(j.result)}</span>` : ''}</div>${j.seen ? `<div class="meta">seen ${j.seen.at ? dnHm(j.seen.at) : ''}: ${esc(how)}</div>` : ''}</div><div class="acts">${j.seen
+      ? `<button type="button" class="btn dnsm" data-dnun="${esc(j.key)}">Undo</button>`
+      : `<button type="button" class="btn dnsm" data-dk="${esc(j.key)}">Mark seen</button><button type="button" class="btn dnsm" data-dncopy="${esc(j.key)}" data-label="${esc(j.label)}">Copy for chat</button>`}${/* DEFERRED (v2): "Open report" needs generated HTML reports; hidden until then */ false && j.hasReport ? `<a class="btn dnsm" href="/api/job-report?id=${encodeURIComponent(j.key)}" target="_blank" rel="noopener"${j.seen ? '' : ` data-dnrep="${esc(j.key)}"`}>Open report</a>` : ''}</div></div>`; };
+  const nU = dnTab === 'unseen' ? items.length : dnCount(lastState).n;
+  el.innerHTML = `<div class="trh"><button type="button" class="tt${dnTab === 'unseen' ? ' on' : ''}" data-dntab="unseen">Not seen (${nU})</button><button type="button" class="tt${dnTab === 'seen' ? ' on' : ''}" data-dntab="seen">Seen</button>${dnUndo ? '<button type="button" class="dnchip undo" data-dnundo="1">Marked seen · Undo</button>' : ''}<button type="button" class="btn dnsm x" data-dnclose="1" aria-label="Close the finished jobs list">&#215;</button></div>`
+    + (items.map(it).join('') || `<div class="empty">${dnTab === 'seen' ? 'Nothing seen in the last 30 days.' : 'All seen.'}</div>`)
+    + (dnTab === 'unseen' && items.length ? `<div class="trf"><button type="button" class="btn dnsm" data-dnall="1">Mark all seen (${items.length})</button></div>` : '')
+    + `<p class="meta" style="margin-top:12px">Finished jobs stay here until you have seen them. Seen ones are kept 30 days.</p>`;
+}
+function dnOpen(on) { const el = $('dnPanel'); el.hidden = !on; tip.style.opacity = 0; if (on) { dnLoad(); el.querySelector('[data-dntab]')?.focus?.(); } dnRedraw(); }
+document.addEventListener('pointerdown', (e) => { dnTouch = e.pointerType === 'touch'; }, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('dnPanel').hidden) dnOpen(false); });
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-dk],[data-dnrow],[data-dnall],[data-dnpanel],[data-dnundo],[data-dntab],[data-dnclose],[data-dnun],[data-dncopy],[data-dnrep]'); if (!t) return;
+  const d = t.dataset;
+  if (d.dnrep) { dnAck({ keys: [d.dnrep], via: 'report' }, [d.dnrep]); return; } // the link opens as usual
+  e.preventDefault();
+  if (d.dk) {
+    // touch has no hover: the first tap shows the card, the second marks seen
+    if (dnTouch && t.classList.contains('fin') && dnTipFor !== d.dk) { dnTipFor = d.dk; tip.innerHTML = t.dataset.tip; tip.style.opacity = 1; const r = t.getBoundingClientRect(); tip.style.left = Math.max(8, Math.min(r.left, innerWidth - tip.offsetWidth - 8)) + 'px'; tip.style.top = r.bottom + 6 + 'px'; return; }
+    dnTipFor = null; return dnAck({ keys: [d.dk], via: 'click' }, [d.dk]);
+  }
+  if (d.dnrow) { const p = [...(lastState?.projects || []), ...(lastState?.otherRows || []), { dir: 'SuperAgent', ...(lastState?.watcherRow || {}) }].find((x) => x.dir === d.dnrow) || {};
+    return dnAck({ row: d.dnrow, before: Date.now() }, (p.doneAckKeys || []).filter((k) => !dnHidden.has(k))); }
+  if (d.dnall) return dnAck({ all: true, before: Date.now() }, dnCount(lastState).keys);
+  if (d.dnpanel) return dnOpen($('dnPanel').hidden || !!t.closest('.dnmore'));
+  if (d.dnundo) return dnUndo && dnUnack(dnUndo);
+  if (d.dntab) { dnTab = d.dntab; dnData = null; return dnLoad(); }
+  if (d.dnclose) return dnOpen(false);
+  if (d.dnun) return dnUnack([d.dnun]).then(dnLoad);
+  if (d.dncopy) { const txt = `[job ${d.dncopy}] ${d.label || ''}`.trim(); try { navigator.clipboard.writeText(txt); } catch {} t.textContent = 'Copied'; }
+});
+// click an agent icon: copy its tooltip text (plain text) and flash "Copied" (2026-11-14, owner approved)
+const copyToastEl = document.createElement('div'); copyToastEl.className = 'tip'; copyToastEl.setAttribute('role', 'status'); document.body.appendChild(copyToastEl); let copyToastT = 0;
+function copyToast(msg, x, y) { copyToastEl.textContent = msg; copyToastEl.style.left = Math.max(8, Math.min(x, innerWidth - 90)) + 'px'; copyToastEl.style.top = Math.max(8, y) + 'px'; copyToastEl.style.opacity = 1; clearTimeout(copyToastT); copyToastT = setTimeout(() => { copyToastEl.style.opacity = 0; }, 1200); }
+document.addEventListener('click', async (e) => {
+  const ic = e.target.closest('span.ico[data-tip]'); if (!ic || ic.closest('a,button,[data-dk]')) return;
+  const d = document.createElement('div'); d.innerHTML = ic.dataset.tip.replace(/<br\s*\/?>/gi, '\n'); const txt = d.textContent.trim(); if (!txt) return;
+  const r = ic.getBoundingClientRect();
+  try { await navigator.clipboard.writeText(txt); copyToast('Copied', r.left, r.bottom + 6); } catch { copyToast('Copy failed', r.left, r.bottom + 6); }
+});
 function tjRows(p, nCols) {
-  const list = p.tracked || [], key = 't:' + p.dir;
-  const norm = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  // running on top, failed/stopped/idle next, done folded behind "N done, hidden" (recent done jobs and saved features)
+  const board = p.boardOrganization?.project === p.dir ? p.boardOrganization : null;
+  const present = (j) => {
+    if (!board) return j;
+    // Promote only exact lead directories with a canonical feature row present.
+    const features = (board.features || []).filter((f) => (p.sub || []).some((it) => it.id === f.id || (it.folder || it.id) === f.id));
+    if (features.some((f) => (f.leadOutdirs || []).includes(j.outdir) || (f.leadJobIds || []).includes(j.id))) return null;
+    // Project-scoped end cutoff also catches old records restored by the reaper.
+    if (['failed', 'stopped'].includes(j.status) && j.ended && j.ended <= board.cutoff) return null;
+    const task = (board.tasks || []).find((t) => (t.outdirs || []).includes(j.outdir));
+    if (task) return { ...j, label: task.title, presentationEffort: (task.jobIds || []).includes(j.id) ? task.effort : null };
+    const parent = features.find((f) => f.childRoot && (j.outdir || '').startsWith(f.childRoot));
+    return parent ? { ...j, label: `${parent.title}: ${j.label}` } : j;
+  };
+  const list = (p.tracked || []).map(present).filter(Boolean), key = 't:' + p.dir;
+  // Saved features are historical records. Deduplicate only the same record id;
+  // equal labels can describe distinct attempts and do not establish identity.
   const live = list.filter((j) => j.status === 'running'), done = list.filter((j) => j.status === 'done'), bad = list.filter((j) => j.status !== 'running' && j.status !== 'done');
-  const seen = new Set([...live, ...bad, ...done].map((j) => norm(j.label)));
-  for (const f of p.features || []) { const k = norm(f.label); if (seen.has(k)) continue; seen.add(k); (f.status === 'running' ? live : f.status && f.status !== 'done' ? bad : done).push({ ...f, status: f.status || 'done' }); }
+  const seen = new Set(list.map((j) => j.id).filter(Boolean));
+  for (const f of (p.features || []).map(present).filter(Boolean)) { if (f.id && seen.has(f.id)) continue; if (f.id) seen.add(f.id); (f.status === 'running' ? live : f.status && f.status !== 'done' ? bad : done).push({ ...f, status: f.status || 'done' }); }
+  const history = board?.clearedJobs || [];
   const n = live.length + bad.length + done.length;
-  if (!n) return '';
+  if (!n && !history.length) return '';
   const SC = { running: 'var(--free)', done: 'var(--status-done)', failed: 'var(--bad)', stopped: 'var(--local)', idle: 'var(--info)' };
   const pico = (j) => { const d = j.viaPlan || (j.isPlan && /^\d\d-/.test(j.project || '') ? j.project : null) || (/^\d\d-/.test(j.plan || '') ? j.plan : null) || (/^\d\d-/.test(p.dir || '') ? p.dir : null); const g = d ? planPath(d) : p.dir === 'Unassigned' ? UNASSIGNED_G : FOLDER_G;
     const c = PIC[(s0 => s0 && s0.cat)((lastState?.projects || []).find((x) => x.dir === d))] || 'var(--ink3)';
@@ -1752,20 +1915,23 @@ function tjRows(p, nCols) {
   const one = (j) => {
     const st = j.status || 'done', c = SC[st] || 'var(--status-todo)', pct = st === 'running' ? 50 : 100;
     const when = st === 'running' ? `running ${tjDur(j)}` : j.ended ? `${st}${j.endReason ? ` (${j.endReason})` : ''} · ${tjDur(j)} · ${ago(j.ended)} ago` : `${st} ${esc(j.finished || '')}`;
-    const tip = `<b>${esc(j.label)}</b>${j.slug && j.slug !== j.label ? ` <span class="meta">${esc(j.slug)}</span>` : ''}<br>${TJ_KIND[j.kind] || 'Sub-task'} on ${esc(j.viaPlan ? `${j.viaPlan} (folded into ${p.dir})` : p.dir)}<br>${esc(TJ_HARNESS[j.harness] || j.harness || '')}${j.model ? ` · ${esc(j.model)}` : ''}<br>${esc(when)}${j.activityHint || j.statusHint ? `<br>${esc(j.activityHint || j.statusHint)}` : ''}${j.projectFrom ? `<br><span class="meta">plan from: ${esc(j.projectFrom)}</span>` : ''}${j.launcher ? `<br><span class="meta">via ${esc(j.launcher)}</span>` : ''}`;
+    const tip = `<b>${esc(j.label)}</b>${j.slug && j.slug !== j.label ? ` <span class="meta">${esc(j.slug)}</span>` : ''}<br>${TJ_KIND[j.kind] || 'Sub-task'} on ${esc(j.viaPlan ? `${j.viaPlan} (folded into ${p.dir})` : p.dir)}<br>${esc(TJ_HARNESS[j.harness] || j.harness || '')}${j.model ? ` · ${esc(j.model)}` : ''}${j.presentationEffort ? ` · ${esc(j.presentationEffort)}` : ''}<br>${esc(when)}${j.activityHint || j.statusHint ? `<br>${esc(j.activityHint || j.statusHint)}` : ''}${j.projectFrom ? `<br><span class="meta">plan from: ${esc(j.projectFrom)}</span>` : ''}${j.launcher ? `<br><span class="meta">via ${esc(j.launcher)}</span>` : ''}`;
     return `<div class="name sub tsk" style="padding-left:22px;opacity:.9;display:flex;align-items:center;gap:6px;min-width:0" data-tip="${esc(tip)}">${pico(j)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.label)}</span>${j.kind && j.kind !== 'subagent' ? ` <span class="meta">${esc(TJ_KIND[j.kind] || j.kind)}</span>` : ''}</div>`
       + `<div style="grid-column:span ${nCols};font-size:11px" data-tip="${esc(tip)}"><span class="st ${st === 'in progress' ? 'in-progress' : ''}" style="background:${c};color:var(--on-solid);padding:1px 6px;border-radius:8px">${esc(st)}</span> <span class="meta">${esc(j.statusHint || (st === 'running' ? `${tjDur(j)}${j.activityHint ? ` · ${j.activityHint}` : ''}` : when))}</span>${j.id && (j.outdir || j.hasReport) ? ` <a class="meta" href="/api/job-report?id=${encodeURIComponent(j.id)}" target="_blank" rel="noopener">report</a>` : ''}</div>`
       + `<div class="xc pg" data-tip="${esc(tip)}"><div class="bar tk"><i style="width:${pct}%;background:${c}${st === 'running' ? ';opacity:.8' : ''}"></i></div><span class="pl2">${st === 'running' ? tjDur(j) : st}</span></div>`
-      + `<div></div><div class="who xc">${st === 'running' ? tjIco(j) : ''}</div>`; // only running agents wear an icon; the model is in the tooltip
+      + `<div></div><div class="who xc"></div>`; // 2026-11-14 one-icon: sub-task rows wear no icon; the project row's Working column shows one per running process
   };
   const open = !tjClosed.has(key), showDone = subDone.has(key);
-  const pctAll = Math.round(100 * done.length / n);
-  const head = `<div class="tjtg subhd" data-p="${esc(key)}" style="grid-column:1/-1;padding:2px 0 2px 22px;font-size:11px;cursor:pointer;color:var(--ink3);user-select:none" title="Click to ${open ? 'hide' : 'show'} the sub-tasks">`
-    + `<span class="cv" style="display:inline-block;width:12px">${open ? '▾' : '▸'}</span>${n} sub-task${n === 1 ? '' : 's'}${live.length ? ` · <b style="color:var(--free)">${live.length} running</b>` : ''}${bad.length ? ` · <b style="color:var(--local)">${bad.length} failed/stopped</b>` : ''} · <b style="color:var(--ink)">${done.length}/${n}</b> done`
-    + ` <span class="bar tk" style="display:inline-block;width:80px;vertical-align:middle;margin-left:6px"><i style="width:${pctAll}%;background:var(--progress-done)"></i></span> ${live.map((j) => tjIco(j)).join('')}</div>`;
+  const pctAll = n ? Math.round(100 * done.length / n) : 0;
+  const head = `<div class="tjtg subhd" data-p="${esc(key)}" style="grid-column:1/-1;padding:2px 0 2px 22px;font-size:11px;cursor:pointer;color:var(--ink3);user-select:none" title="Tracked job rows and saved feature history; counts are records, not process counts. Click to ${open ? 'hide' : 'show'}.">`
+    + `<span class="cv" style="display:inline-block;width:12px">${open ? '▾' : '▸'}</span>${n} sub-task${n === 1 ? '' : 's'}${live.length ? ` · <b style="color:var(--free)">${live.length} tracked running</b>` : ''}${bad.filter((j) => j.status === 'idle').length ? ` · ${bad.filter((j) => j.status === 'idle').length} idle` : ''}${bad.filter((j) => j.status !== 'idle').length ? ` · <b style="color:var(--local)">${bad.filter((j) => j.status !== 'idle').length} other outcomes</b>` : ''} · <b style="color:var(--ink)">${done.length}/${n}</b> done`
+    + ` <span class="bar tk" style="display:inline-block;width:80px;vertical-align:middle;margin-left:6px"><i style="width:${pctAll}%;background:var(--progress-done)"></i></span></div>`; // no icons on the summary line (2026-11-14 one-icon)
   if (!open) return head;
   const tog = done.length ? `<div class="subdn" data-p="${esc(key)}" style="grid-column:1/-1;padding:2px 0 2px 36px;font-size:11px;cursor:pointer;color:var(--ink3);user-select:none" title="Click to ${showDone ? 'hide' : 'show'} the finished sub-tasks">${done.length} done, ${showDone ? 'shown' : 'hidden'} (<u>${showDone ? 'hide' : 'show'}</u>)</div>` : '';
-  return head + live.map(one).join('') + bad.map(one).join('') + tog + (showDone ? done.map(one).join('') : '');
+  const historyKey = 'cleared:' + p.dir, historyOpen = subDone.has(historyKey);
+  const cleared = history.length ? `<div style="grid-column:1/-1;padding-left:36px"><button type="button" class="subdn" data-p="${esc(historyKey)}" aria-expanded="${historyOpen}">${history.length} cleared failed/stopped tasks (${historyOpen ? 'hide' : 'show'} history)</button></div>`
+    + (historyOpen ? history.map(one).join('') : '') : '';
+  return head + live.map(one).join('') + bad.map(one).join('') + tog + (showDone ? done.map(one).join('') : '') + cleared;
 }
 // plan 68 folded into the AgentGlim row: round state, progress and the last audit's verdict on one collapsible line
 function p68Line(p, key) {
@@ -1783,7 +1949,7 @@ function pipe(s) {
   lastState = s; if (s.priorities) prio = s.priorities;
   const ad = s.projects.filter((p) => p.activeBuild).map((p) => p.dir);
   if (ad.join() !== [...activeDirs].join()) { activeDirs = new Set(ad); if (ap) apRender(); }
-  let out = '<div class="h" style="text-align:left">Project</div>' + STAGES.map((x) => `<div class="h">${x.replace('v1-','1.').replace('v2-','2.')}</div>`).join('') + `<div class="h xc" data-tip="${esc('The latest audit\'s estimate of how much of the spec is implemented.<br>A finished pipeline (done) can still leave requirements unfinished.')}">Audit %</div><div class="h xc" data-tip="Tokens, and below in amber the cost at API rates (all rounds)">Tokens · $</div><div class="h xc">Working</div>`;
+  let out = '<div class="h" style="text-align:left">Project</div>' + STAGES.map((x) => `<div class="h">${x.replace('v1-','1.').replace('v2-','2.')}</div>`).join('') + `<div class="h xc" data-tip="${esc('The latest audit\'s estimate of how much of the spec is implemented.<br>A finished pipeline (done) can still leave requirements unfinished.')}">Audit %</div><div class="h xc" data-tip="Tokens, and below in amber the cost at API rates (all rounds)">Tokens · $</div><div class="h xc" title="Work icons include scanned jobs and interactive sessions; badged icons are finished notices awaiting acknowledgement.">Working / notices</div>`;
   // negative delay keeps the flash phase steady across the 15 s re-renders
   const delay = `animation-delay:-${Date.now() % 1200}ms`;
   const cc = s.catColors || {};
@@ -1800,7 +1966,7 @@ function pipe(s) {
   const prow = (p) => !p.activeBuild && !p.liveBuild && !p.foldedInto && p.dir !== AG_DIR && (p.merged?.length > 0 || p.noState);
   const stateText = (p) => [p.noState ? 'plan written, waiting for your approval' : p.stage === 'done' ? (p.endState || 'done') : p.stage ? `step ${p.stage}` : 'idle',
     p.held ? `on hold (${p.held.slice(0, 60)})` : '', p.merged?.length ? `${p.merged.length} plan${p.merged.length === 1 ? '' : 's'} folded in` : ''].filter(Boolean).join(' · ');
-  let aout = '<div class="h" style="text-align:left">Project</div>' + ACT_COLS.map(([, h]) => `<div class="h">${h}</div>`).join('') + `<div class="h xc" data-tip="${esc('Share of this plan\'s approvals-page items that are closed: decisions, approvals and deferred next steps.<br>Hover a bar for the open counts and the last audit\'s spec estimate.')}">Progress</div><div class="h xc">Tokens</div><div class="h xc">Working</div>`;
+  let aout = '<div class="h" style="text-align:left">Project</div>' + ACT_COLS.map(([, h]) => `<div class="h">${h}</div>`).join('') + `<div class="h xc" data-tip="${esc('Share of this plan\'s approvals-page items that are closed: decisions, approvals and deferred next steps.<br>Hover a bar for the open counts and the last audit\'s spec estimate.')}">Progress</div><div class="h xc">Tokens</div><div class="h xc" title="Work icons include scanned jobs and interactive sessions; badged icons are finished notices awaiting acknowledgement.">Working / notices</div>`;
   // AgentGlim (the build project) is ONE row: plan 68's live round, bars, tokens and working icons, plus the
   // feature sub-items of s.obsRow (../features.json) under it. When plan 68 is not an active build, the obsRow
   // (data/updates.json stages) is drawn instead, with the same sub-items. The AgentGlim SuperAgent is a separate row below it.
@@ -1811,7 +1977,7 @@ function pipe(s) {
   const SEC = (p) => p.section || (p.activeBuild || p.liveBuild || p.dir === AG_DIR || (!p.foldedInto && p.noState) ? 'active' : 'pipeline');
   const parents = s.projects.filter((p) => SEC(p) === 'active' && prow(p));
   const me = s.self, obs = s.obsRow, wr = s.watcherRow;
-  const agMerge = (p, o) => ({ ...p, label: 'AgentGlim', sub: o.sub, subKey: 'observatory', subSrc: '~/dev/projects/agentglim/features.json', selfInfo: me,
+  const agMerge = (p, o) => ({ ...p, label: 'AgentGlim', sub: o.sub, boardOrganization: o.boardOrganization, subKey: 'observatory', subSrc: '~/dev/projects/agentglim/features.json', selfInfo: me,
     tokens: (p.tokens || 0) + (o.tokens || 0), cost: (p.cost || 0) + (o.cost || 0), tokNote: `plan 68: ${fmt(p.tokens)} · sessions in the old _observatory folder: ${fmt(o.tokens)}`,
     working: [...(p.working || []), ...(o.working || [])], active: (p.active || 0) + (o.active || 0), agents: p.agents || o.agents ? [...(p.agents || []), ...(o.agents || [])] : undefined,
     updGate: o.activeBuild?.gateAt ? { at: o.activeBuild.gateAt, titles: (o.updates || []).filter((u) => u.status === 'review').map((u) => u.title) } : null });
@@ -1819,7 +1985,7 @@ function pipe(s) {
   // claude in the plans folder) and its live helper agents; server watcher.mjs. It wears the real AgentGlim eye logo.
   const wRow = () => {
     if (!wr) return '';
-    const live = wr.live || [], hm = (n) => { const m = Math.max(0, Math.round((Date.now() - n) / 60e3)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+    const live = wr.agents ? wr.agents.map((a) => { const j = a.work || a.job; return { ...j, task: j.task || j.label || 'helper', since: j.since || j.started || j.start }; }) : wr.live || [], hm = (n) => { const m = Math.max(0, Math.round((Date.now() - n) / 60e3)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
     const ses = ((s.otherRows || []).find((o) => o.dir === 'plans') || {}).working || [];
     const on = live.length > 0, names = (wr.sessions || []).map((x) => x.name).join(', ');
     const wp = { dir: 'agentglim-watcher', label: 'SuperAgent', noLink: 'The SuperAgent: Claude Code in the plans folder and its background helper agents. Not the AgentGlim build project (the row above).', cat: null, stage: '', active: live.length, tokens: wr.tokens || 0, cost: 0, working: [],
@@ -1830,7 +1996,7 @@ function pipe(s) {
     wh = wh.slice(0, wh.lastIndexOf('<div class="who xc">')) + '<div class="who xc">'
       + (on ? '<span class="st running" style="animation:pulse 2.4s ease-in-out infinite" data-tip="' + esc(`${live.length} helper agent${live.length === 1 ? '' : 's'} working for the SuperAgent session${names ? ` (${names})` : ''}`) + '">active</span>'
         : '<span class="meta" data-tip="' + esc(`No helper agents running for the SuperAgent session${names ? ` (${names})` : ''}`) + '">idle</span>')
-      + sess + live.map((h) => ico(pk('anthropic', h.model), `<b>${esc(h.task)}</b><br>${esc(h.model || 'model unknown')}<br>running ${hm(h.since)}<br>${fmt(h.tokens)} tokens in context`, PCOLOR.anthropic)).join('') + '</div>';
+      + sess + ((wr.agentsUnknown || []).length ? `<span class="st queued">${wr.agentsUnknown.length} unverified</span>` : '') + ((wr.agentsIdle || []).length ? `<span class="st queued">${wr.agentsIdle.length} idle</span>` : '') + live.map((h) => ico(pk('anthropic', h.model), `<b>${esc(h.task)}</b><br>${esc(h.model || 'model unknown')}<br>running ${hm(h.since)}<br>${fmt(h.tokens)} tokens in context`, PCOLOR.anthropic)).join('') + dnCell({ dir: 'SuperAgent', doneAck: wr.doneAck, doneAckKeys: wr.doneAckKeys }) + '</div>';
     return wh + tjRows({ dir: 'SuperAgent', tracked: wr.tracked || [] }, 4); // its own jobs (observatory__* queue takes), 2026-11-12
   };
   // helpers of subProj() below (sub-project cards) and of the sub-item tags in subRows()
@@ -1854,8 +2020,12 @@ function pipe(s) {
   }
   // the Observatory's own row, used only while plan 68 is not an active build: drawn like an active build from
   // s.obsRow (data/updates.json drives the stages; tokens are sessions run inside _observatory/); server health goes in its tooltip
-  if (obs && !agActive) aout += row({ ...obs, tracked: (s.projects.find((x) => x.dir === AG_DIR) || {}).tracked, features: (s.projects.find((x) => x.dir === AG_DIR) || {}).features, page: '/', selfInfo: me }, ['update', 'your check', 'verify', 'done'], obs.stage === 'done' ? 99 : obs.stageIndex) + subProj(obs, 4) + subRows(obs, 4) + tjRows({ ...obs, tracked: (s.projects.find((x) => x.dir === AG_DIR) || {}).tracked, features: (s.projects.find((x) => x.dir === AG_DIR) || {}).features }, 4);
+  const agP = s.projects.find((x) => x.dir === AG_DIR) || {}, agDn = { doneAck: agP.doneAck, doneAckKeys: agP.doneAckKeys, dnRow: AG_DIR };
+  if (obs && !agActive) aout += row({ ...obs, ...agDn, tracked: (s.projects.find((x) => x.dir === AG_DIR) || {}).tracked, features: (s.projects.find((x) => x.dir === AG_DIR) || {}).features, page: '/', selfInfo: me }, ['update', 'your check', 'verify', 'done'], obs.stage === 'done' ? 99 : obs.stageIndex) + subProj(obs, 4) + subRows(obs, 4) + tjRows({ ...obs, dir: AG_DIR, tracked: (s.projects.find((x) => x.dir === AG_DIR) || {}).tracked, features: (s.projects.find((x) => x.dir === AG_DIR) || {}).features }, 4);
   for (const p of parents) aout += row({ ...p, stateText: stateText(p) }, ACT_COLS.map(() => ''), -1) + subProj(p, ACT_COLS.length) + subRows(p, ACT_COLS.length) + tjRows(p, ACT_COLS.length);
+  // Q3 (owner 2026-11-14): a plan stays in Active builds while it has a finished job not seen yet
+  for (const p of s.projects.filter((x) => SEC(x) === 'active' && !x.activeBuild && !x.liveBuild && !prow(x) && x.dir !== AG_DIR && (x.doneAckKeys || []).length))
+    aout += row({ ...p, stateText: `${stateText(p)} · finished jobs not seen yet` }, ACT_COLS.map(() => ''), -1) + subProj(p, ACT_COLS.length) + subRows(p, ACT_COLS.length) + tjRows(p, ACT_COLS.length);
   aout += wRow();
   // interactive agents outside any plan: one row per project folder, icons only. The plans-folder session is the
   // SuperAgent (its icon is in the SuperAgent row above); sessions started in the home folder are labelled as such
@@ -1863,7 +2033,9 @@ function pipe(s) {
     if (o.dir === 'plans' && wr) continue;
     aout += row({ ...o, stage: '', cat: null, ...(o.dir === 'goals' ? { label: 'Goals', noLink: 'Goals project' } : {}), ...(o.dir === 'Unassigned' ? { label: 'Unassigned', noLink: 'Jobs whose plan could not be told: no --plan, no [plan: NN-slug] tag, no plan folder in the cwd or prompt. Launch with --plan NN-slug.' } : {}), ...(o.dir === '~' ? { label: 'Home folder sessions', noLink: 'Agent sessions (Claude Code, Codex, Pi, OpenCode) started in the home folder (~), outside any plan or project' } : {}) }, ['', '', '', ''], -1) + tjRows(o, 4);
   }
-  $('actCard').hidden = !acts.length && !obs && !wr && !(s.otherRows || []).length; $('actPipe').innerHTML = acts.length || obs || wr || (s.otherRows || []).length ? aout : ''; bindTips($('actPipe'));
+  const dnFoc = dnFocusKey();
+  $('actCard').hidden = !acts.length && !obs && !wr && !(s.otherRows || []).length && !dnCount(s).n; $('actPipe').innerHTML = acts.length || obs || wr || (s.otherRows || []).length || dnCount(s).n ? aout : ''; bindTips($('actPipe'));
+  dnChrome(s); dnRefocus(dnFoc);
   // Linked plans remain nested (their card under the parent row). An active linked plan is its own Active builds
   // row instead (one plan, one section).
   const nested = new Set([...s.projects, ...(s.obsRow ? [s.obsRow] : [])].flatMap((p) => (p.sub || []).map((it) => it.plan).filter(Boolean)).concat(Object.values(s.subProjects?.parents || {}).flat().filter((e) => !e.pin).map((e) => e.plan))); // merged plans are sub-project cards under their parent, not rows of their own; a repo pin (repo-plans.json: repo X is built by plan P) keeps P's own row, since pinned repos have no row to nest under (2026-11-12: 11, 70, 72-78 were missing)
@@ -1895,7 +2067,7 @@ function pipe(s) {
       const parts = mine.map((it) => `${esc(it.id)} ${esc(it.title)} (${spNorm(it.status)}${Number.isFinite(Number(it.pct)) ? ` ${it.pct}%` : ''})${it.statusHint ? ` · ${esc(it.statusHint)}` : ''}`).join('<br>');
       const tip = `<b>${esc(e.name)}</b> · merged plan <b>${esc(e.plan)}</b><br>${esc(e.full)}<br><br>Merged into <b>${esc(parentName)}</b> on ${esc(e.merged)} (${esc(e.ver)})<br>Now lives in: <b>${esc(e.where)}</b><br><span class="meta">${esc(e.code)}</span>${parts ? `<br><br><b>Work tracked by</b><br>${parts}` : ''}`
         + `<br><br><span class="meta">The plan's own history: ${q ? `${fmt(q.tokens)} tokens, $${Math.round(q.cost || 0)} at API rates, stage ${esc(q.stage || '-')}${q.held ? ', held' : ''}` : 'no run data'}${e.real ? `<br>folder ${esc(e.real)}` : '<br>folder not found'}<br>source: ${esc(e.src)}</span>`;
-      const wk = q && q.active ? (q.working || []).filter((w) => w.role !== 'manual' || !w.idle).map((w) => ico(runIcon(w), `<b>${esc(q.dir)}</b><br>${w.role}: ${esc(w.task || '')}${w.model ? ` | ${esc(w.model)}` : ''}`, runColor(w))).join('') : '';
+      const wk = q && q.active ? (q.agents ? q.agents.map((a) => a.work || { ...a.job, provider: a.job.harness, role: a.job.kind, task: a.job.label }) : q.working || []).filter((w) => w.role !== 'manual' || !w.idle).map((w) => ico(runIcon(w), `<b>${esc(q.dir)}</b><br>${w.role}: ${esc(w.task || '')}${w.model ? ` | ${esc(w.model)}` : ''}`, runColor(w))).join('') : '';
       return `<div class="spj" style="--c:${col}">`
         + `<div class="name spn" style="--cat:${col}" data-tip="${esc(tip)}"><span class="spk">${icon}</span><a class="pl" href="${esc(pageUrl(`${e.plan}/index.html`))}" target="_blank" rel="noopener" title="Open ${esc(e.plan)}'s review page">${esc(e.name)}</a><span class="meta">plan ${esc(e.plan.slice(0, 2))}</span></div>`
         + `<div class="spc" style="grid-column:span ${nCols}" data-tip="${esc(tip)}"><span class="spm">${spMark}merged · ${esc(e.ver)}</span><span class="st solid ${st === 'in progress' ? 'in-progress' : ''}" style="--status-color:${SCOL[st]};padding:1px 7px;border-radius:8px">${stLabel}</span><span class="meta">${e.pin || e.fold ? pinTxt || 'no run data' : `lives in ${esc(e.where)}`}</span></div>`
@@ -1930,11 +2102,11 @@ function pipe(s) {
       // linked item (subitems.json "plan"): status and % come live from that plan, never from typed notes
       const lk = it.plan && q ? subLive(q) : null;
       const st = lk ? lk.st : SC[it.status] ? it.status : 'todo', pct = lk ? lk.pct : Math.max(0, Math.min(100, Number(it.pct) || (st === 'done' ? 100 : 0)));
-      const tip0 = lk ? `<b>${esc(it.title)}</b><br>built in plan <b>${esc(q.dir)}</b>: ${esc(lk.txt)}<br>audit ${q.progress ? `${q.progress.pct}% (${esc(q.progress.round || '')})` : 'not yet'}<br><span class="meta">live from that plan; click "plan ${esc(q.dir.slice(0, 2))}" to open it</span>`
-        : `<b>${esc(it.title)}</b> · ${st}${it.statusHint ? `<br><span class="meta">${esc(it.statusHint)}</span>` : it.updated ? `<br><span class="meta">updated ${esc(it.updated)}</span>` : ''}${it.note ? `<br>${esc(it.note)}` : ''}`;
+      const tip0 = lk ? `<b>${esc(it.title)}</b><br>built in plan <b>${esc(q.dir)}</b>: ${esc(lk.txt)}<br>audit ${q.progress ? `${q.progress.pct}% (${esc(q.progress.round || '')})` : 'not yet'}${it.folder ? `<br><span class="meta">Folder: ${esc(it.folder)}</span>` : ''}<br><span class="meta">live from that plan; click "plan ${esc(q.dir.slice(0, 2))}" to open it</span>`
+        : `<b>${esc(it.title)}</b> · ${st}${it.statusHint ? `<br><span class="meta">${esc(it.statusHint)}</span>` : it.updated ? `<br><span class="meta">updated ${esc(it.updated)}</span>` : ''}${it.folder ? `<br><span class="meta">Folder: ${esc(it.folder)}</span>` : ''}${it.note ? `<br>${esc(it.note)}` : ''}`;
       const arAt = s.subArchived?.[`${sk}:${it.id}`]; // tidy job's record (data/subitems-archived.json)
       const tip = tip0 + (st === 'done' && arAt ? `<br><span class="meta">done; tidied away ${ago(Date.parse(arAt))} ago</span>` : '');
-      let wk = q && q.active ? (q.working || []).filter((w) => w.role !== 'manual' || !w.idle).map((w) => ico(runIcon(w), `<b>${esc(q.dir)}</b><br>${w.role}: ${esc(w.task || '')}${w.model ? ` | ${esc(w.model)}` : ''}`, runColor(w))).join('') : '';
+      let wk = q && q.active ? (q.agents ? q.agents.map((a) => a.work || { ...a.job, provider: a.job.harness, role: a.job.kind, task: a.job.label }) : q.working || []).filter((w) => w.role !== 'manual' || !w.idle).map((w) => ico(runIcon(w), `<b>${esc(q.dir)}</b><br>${w.role}: ${esc(w.task || '')}${w.model ? ` | ${esc(w.model)}` : ''}`, runColor(w))).join('') : '';
       if (!wk && q && (st === 'running' || st === 'blocked')) {
         wk = (q.lastModels || []).map((a) => ico(pk(a.provider, a.model), `<b>${esc(q.dir)}</b><br>last step ${esc(a.step)}: ${esc(a.role)} | ${esc(a.model || a.provider)}<br>not running now (${esc(q.stage || '')})`).replace('class="ico"', 'class="ico pz"')).join('');
       }
@@ -1943,7 +2115,7 @@ function pipe(s) {
       const plink = lk ? ` <a class="pl" href="${esc(pageUrl(`${q.dir}/index.html`))}" target="_blank" rel="noopener" style="font-size:11px;color:${PIC[q.cat] || 'var(--ink3)'}" title="Open ${esc(q.dir)}'s review page (${esc(q.cat || 'plan')})"><span class="spi">${stPI(q)}</span>↳ plan ${esc(q.dir.slice(0, 2))}</a>`: ''; // link in the plan's category color + glyph
       return { done: st === 'done', html: `<div class="name sub" style="padding-left:22px;opacity:.9" data-tip="${esc(tip)}"><span class="stpg cpy sbc" data-k="${esc(`s:${p.dir}:${it.id}`)}" data-tip="${esc(`${esc(p.dir)} · item ${esc(it.id)}<br><b>click to copy this item for a chat</b>`)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span class="meta">${esc(it.id)}</span></span> ${esc(it.title)}${plink}${spTag(it)}</div>`
         + `<div style="grid-column:span ${nCols};font-size:11px" data-tip="${esc(tip)}"><span class="st solid ${st === 'in progress' ? 'in-progress' : ''}" style="--status-color:${SC[st]};padding:1px 6px;border-radius:8px">${lk ? esc(lk.label) : st}</span>${lk ? ` <span class="meta">${esc(lk.txt)}</span>` : it.statusHint ? ` <span class="meta">${esc(it.statusHint)}</span>` : ''}</div>`
-        + `<div class="xc pg" data-tip="${esc(tip)}"><div class="bar tk"><i style="width:${pct}%;background:${SC[st]}"></i></div><span class="pl2">${pct}%</span></div>`
+        + `<div class="xc pg" data-tip="${esc(tip)}"><div class="bar tk"><i style="width:${pct}%;background:${SC[st]}"></i></div><span class="pl2">${it.progressUnknown ? 'unknown' : `${pct}%`}</span></div>`
         + (lk ? `<div class="num xc" data-tip="${esc(`${q.dir}: ${fmt(q.tokens)} tokens, ${(q.cost || 0).toFixed(2)} at API rates`)}">${fmt(q.tokens)}${q.cost ? `<span style="font-size:11px;color:var(--local);margin-left:6px">$${Math.round(q.cost)}</span>` : ''}</div>` : '<div></div>') + `<div class="who xc">${wk}</div>` };
     });
     const nDone = rows.filter((r) => r.done).length;
@@ -1992,8 +2164,8 @@ function pipe(s) {
     // Driver stage + models used to sit in a text chip here; the provider icons show them now, so the detail rides in their tooltips.
     const lbTip = p.liveBuild && !p.activeBuild ? `<br><span class="meta">driver stage <b>${esc(p.liveBuild.stage || '?')}</b>: ${lbM ? `running ${esc(lbM)}` : 'nothing running yet, waiting for a free slot or the budget router'}</span>` : '';
     const agW = p.agents ? p.agents.filter((a) => a.work).map((a) => a.work) : p.working, agJ = p.agents ? p.agents.filter((a) => !a.work).map((a) => a.job) : p.tracked; // one icon per real agent (server working.mjs)
-    out += `<div class="who xc">${tjIcons(agJ)}${p.updGate ? `<span class="st queued" data-tip="${esc(`<b>Your check</b><br>AgentGlim updates waiting for your check: ${esc(p.updGate.titles.join('; '))}`)}">updates waiting for your check · ${ago(p.updGate.at)}</span>` : ''}${gateWait ? `<span class="st queued" data-tip="${esc(p.dir === 'observatory' ? `<b>Your check</b><br>AgentGlim updates waiting for your check: ${esc((p.updates || []).filter((u) => u.status === 'review').map((u) => u.title).join('; '))}` : `<b>Active build gate</b><br>Audit ${p.dir}/_build/v${p.rev?.n}-r1/, then approve or redo on the approvals page, or write APPROVED / REDO in _build/v${p.rev?.n}-gate/.`)}">${p.dir === 'observatory' ? 'updates waiting for your check' : 'waiting for your audit'} · ${ago(p.activeBuild.gateAt)}</span>` : ''}${p.goal && (!['finished','ended','stopped'].includes(p.goal.status) || (p.working || []).some((w) => w.role === 'goal')) ? ((h) => ['paused', 'limit'].includes(p.goal.status) ? h.replace('class="ico"', 'class="ico pz"') : h)(ico('goal', goalTip(p.goal))) + (p.goal.items ? `<span class="gl">${p.goal.itemsDone}/${p.goal.items}</span>` : '') : p.goal ? ico('goalDone', goalTip(p.goal)) : ''}${(agW || []).filter((w) => w.role !== 'goal' || !p.goal).map((w) => { const h = ico(runIcon(w), `<b>${w.role === 'manual' ? `${({ codex: 'Codex', opencode: 'OpenCode', pi: 'Pi' })[w.agent] || 'Claude Code'} (manual)` : /llama|ollama/.test(w.provider) && w.model ? `${w.model} (local)` : PNAME[w.provider] || w.provider || '?'}</b><br>${w.role}: ${w.task}${w.model ? ` | ${dispModel(w.provider, w.model)}` : ''}${w.role === 'manual' ? `<br>${w.lastPrompt ? `last prompt ${ago(w.lastPrompt)} ago` : 'no prompt yet'}${w.status ? ` · ${w.status}` : ''}${w.idle ? '<br><b>idle</b>: no prompt in 30 min' : ''}${w.pane ? `<br>tmux: ${w.pane.title ? `<b>${esc(w.pane.title)}</b> ` : ''}${esc(w.pane.loc)} ${esc(w.pane.id)}` : ''}` : w.paused ? '<br><b>paused</b>: waiting on usage or a stopped process; resource guards may pause running jobs' : ''}${lbTip}`,
-      runColor(w)); return w.paused ? h.replace('class="ico"', `class="ico ${w.role === 'manual' ? 'mi' : 'pz'}"`) : h; }).join('')}</div>`;
+    out += `<div class="who xc">${tjIcons(agJ)}${(p.agentsUnknown || []).length ? `<span class="st queued" title="Running records without verified process, transcript or heartbeat evidence">${p.agentsUnknown.length} unverified</span>` : ''}${(p.agentsIdle || []).length ? `<span class="st queued">${p.agentsIdle.length} idle</span>` : ''}${p.updGate ? `<span class="st queued" data-tip="${esc(`<b>Your check</b><br>AgentGlim updates waiting for your check: ${esc(p.updGate.titles.join('; '))}`)}">updates waiting for your check · ${ago(p.updGate.at)}</span>` : ''}${gateWait ? `<span class="st queued" data-tip="${esc(p.dir === 'observatory' ? `<b>Your check</b><br>AgentGlim updates waiting for your check: ${esc((p.updates || []).filter((u) => u.status === 'review').map((u) => u.title).join('; '))}` : `<b>Active build gate</b><br>Audit ${p.dir}/_build/v${p.rev?.n}-r1/, then approve or redo on the approvals page, or write APPROVED / REDO in _build/v${p.rev?.n}-gate/.`)}">${p.dir === 'observatory' ? 'updates waiting for your check' : 'waiting for your audit'} · ${ago(p.activeBuild.gateAt)}</span>` : ''}${p.goal && (p.agents ? p.agents.some((a) => (a.work || a.job)?.role === 'goal') : (!['finished','ended','stopped'].includes(p.goal.status) || (p.working || []).some((w) => w.role === 'goal'))) ? ((h) => ['paused', 'limit'].includes(p.goal.status) ? h.replace('class="ico"', 'class="ico pz"') : h)(ico('goal', goalTip(p.goal))) + (p.goal.items ? `<span class="gl">${p.goal.itemsDone}/${p.goal.items}</span>` : '') : p.goal && ['finished','ended','stopped','done','failed'].includes(p.goal.status) ? ico('goalDone', goalTip(p.goal)) : ''}${(agW || []).filter((w) => w.role !== 'goal' || !p.goal).map((w) => { const h = ico(runIcon(w), `<b>${w.role === 'manual' ? `${({ codex: 'Codex', opencode: 'OpenCode', pi: 'Pi' })[w.agent] || 'Claude Code'} (manual)` : /llama|ollama/.test(w.provider) && w.model ? `${w.model} (local)` : PNAME[w.provider] || w.provider || '?'}</b><br>${w.role}: ${w.task}${w.model ? ` | ${dispModel(w.provider, w.model)}` : ''}${w.role === 'manual' ? `<br>${w.lastPrompt ? `last prompt ${ago(w.lastPrompt)} ago` : 'no prompt yet'}${w.status ? ` · ${w.status}` : ''}${w.idle ? '<br><b>idle</b>: no prompt in 30 min' : ''}${w.pane ? `<br>tmux: ${w.pane.title ? `<b>${esc(w.pane.title)}</b> ` : ''}${esc(w.pane.loc)} ${esc(w.pane.id)}` : ''}` : w.paused ? '<br><b>paused</b>: waiting on usage or a stopped process; resource guards may pause running jobs' : ''}${lbTip}`,
+      runColor(w)); return w.paused ? h.replace('class="ico"', `class="ico ${w.role === 'manual' ? 'mi' : 'pz'}"`) : h; }).join('')}${dnCell(p)}</div>`;
     return out;
   }
   $('pipe').innerHTML = out; bindTips($('pipe'));
@@ -2180,14 +2352,16 @@ function reviewPanel(s) {
     </div>`).join('');
   const o = s.reviewOptions;
   const sel = (key, f, opts, v) => `<select data-key="${esc(key)}" data-f="${f}">${[...new Set([...opts, v])].map((x) => `<option${x === v ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
-  const srcTxt = (i) => i.source === 'rule' ? `rule: ${esc(i.rule.rule)}` : i.source === 'jev' ? `Jev ${Math.round((i.jev.providerP || 0) * 100)}% sure` : 'no rule matched';
+  const srcTxt = (i) => i.how ? `model from ${esc(i.how)}` : i.source === 'rule' ? `rule: ${esc(i.rule.rule)}` : 'no model id in its logs';
   $('review').innerHTML = !items.length ? '' : items.map((i) => {
     const e = reviewEdit[i.key];
-    const jev = i.jev ? (i.jev.error ? `Jev: ${esc(i.jev.error)}` : `Jev says ${esc(i.jev.provider)} · ${esc(i.jev.class)} (${Math.round((i.jev.providerP || 0) * 100)}%)`)
-      : i.rule ? '' : 'asking Jev...';
+    // cheap-model read of the logs when no id was found; an old Jev answer (name only) is a hint, never the source
+    const jev = i.llm ? (i.llm.error ? `log read failed: ${esc(i.llm.error)}` : `log read: ${esc(i.llm.model || 'no model')} · ${esc(i.llm.provider || '?')}`)
+      : !i.canonical ? 'reading the logs...' : i.jev?.provider ? `<span title="name-only guess, not used">Jev hint: ${esc(i.jev.provider)}</span>` : '';
     const price = i.price ? `$${i.price.input} in · $${i.price.output} out /M <span class="why">(${esc(i.price.key)}, confirmed ${esc(i.price.confirmed || '?')})</span>` : '<span class="st retry">no price in model_prices.json</span>';
     return `<div class="rr">
-      <div><b>${esc(i.kind)}</b> <span class="meta">${esc(i.model || 'no model yet')}</span><div class="why">${esc(i.sample || '')}${i.jobs ? ` · ${i.jobs} job${i.jobs > 1 ? 's' : ''}${i.active ? `, ${i.active} running` : ''}` : ''}</div></div>
+      <div style="grid-column:1/-1"><b>${esc(i.summary || `${i.kind}: needs a look`)}</b>${(i.evidence || []).length ? `<div class="why" title="${esc(i.evidence.join('\n'))}">evidence: ${esc(i.evidence[0].slice(0, 140))}</div>` : '<div class="why">no model id found in its logs</div>'}</div>
+      <div><b>${esc(i.kind)}</b> <span class="meta">${esc(i.canonical || i.model || 'model unknown')}</span><div class="why">${esc(i.sample || '')}${i.jobs ? ` · ${i.jobs} job${i.jobs > 1 ? 's' : ''}${i.active ? `, ${i.active} running` : ''}` : ''}</div></div>
       <div>${e ? sel(i.key, 'provider', o.providers, e.provider) : `<span class="cls">${ico(i.provider)}${esc(i.provider || 'unknown')}</span>`}
         <div class="why">${srcTxt(i)}</div></div>
       <div>${e ? sel(i.key, 'class', o.classes, e.class) : `<span class="cls"><i class="sw" style="background:${colorOf(i.class)}"></i>${esc(i.class)}</span>`}
@@ -2853,7 +3027,7 @@ function stDeep(d) {
   w += `<h4>audit queue (${h0.queue?.armed ? 'watch armed' : '<b style="color:var(--bad)">watch not running</b>'})</h4>${dTab(['request', 'model', 'role', 'state', 'age'], (hd.queue || []).map((q) => [esc(q.name), esc(q.model), esc([q.role, q.effort].filter(Boolean).join(' ')), q.state, `${q.age} min`]))}`;
   w += `<h4>stalled or paused</h4>${(d.stalled || []).map((x) => stIt('warn', `<b>${esc(x.dir)}</b> wrote nothing for ${x.idleMin} min on ${esc(x.stage)}`, 'w')).join('')}${d.plans.flatMap((p) => p.paused.map((x) => stIt('pause', `<b>${esc(p.dir)}</b>: ${esc(x)} paused by a usage limit`))).join('') || '<div class="meta">none</div>'}`;
   w += `<details${(hd.hangs || []).length ? ' open' : ''}><summary>hung readers killed in 24 h (${(hd.hangs || []).length}) · <a class="pl" href="/reaper" target="_blank" rel="noopener">reaper AI verdicts</a></summary><div class="dlog">${(hd.hangs || []).map((l) => `<div>${esc(l)}</div>`).join('') || 'none'}</div></details>`;
-  w += `<details><summary>limit-pause log (latest first)</summary><div class="dlog">${(hd.limitPause || []).map((l) => `<div>${esc(l)}</div>`).join('') || 'none'}</div></details>`;
+  w += `<details><summary>Retired limit-pause log (historical)</summary><div class="dlog">${(hd.limitPause || []).map((l) => `<div>${esc(l)}</div>`).join('') || 'none'}</div></details>`;
   h += dSec('health', 'clock', 'Watch out, in depth', `RAM ${h0.mem?.usedPct ?? '-'}% (${h0.mem?.availGb ?? '-'} GB free) · Temp ${h0.tmp?.usedPct ?? '-'}% (${h0.tmp?.freeGb ?? '-'} GB free)`, w);
   // 3. the SuperAgent said
   const wd = dp.watcher, wl = wd?.lines || {}, hist = wd?.history || [];
@@ -3149,7 +3323,7 @@ function stMeta(p) {
 const cpyRows = {};
 function cpyText(k) {
   const r = cpyRows[k]; if (!r) return '';
-  if (k.startsWith('s:')) { const { p, it, st, pct, q, lk } = r, a = it.agent; return [`${p.subSrc ? 'AgentGlim' : `Plan ${p.dir}`} · sub-feature ${it.id}: ${it.title}`, lk ? `Status: ${lk.label}, ${pct}% (live from plan ${q.dir})` : `Status: ${st}, ${pct}%${it.updated ? ` (updated ${it.updated})` : ''}`, it.note && !lk ? `Note: ${it.note}` : '', q ? `Linked plan: ${q.dir}, stage ${q.stage || '-'}${q.active ? ', running' : ''}${q.held ? `, held: ${q.held}` : ''}` : '', a ? `Agent: ${a.model} round ${a.round}/7 ${a.step || ''} (${a.status})` : '', p.subSrc ? `Source: ${p.subSrc}` : `Folder: ~/dev/projects/plans/${p.dir} (_build/subitems.json)`].filter(Boolean).join('\n'); }
+  if (k.startsWith('s:')) { const { p, it, st, pct, q, lk } = r, a = it.agent; return [`${p.subSrc ? 'AgentGlim' : `Plan ${p.dir}`} · sub-feature ${it.id}: ${it.title}`, it.folder ? `Folder: ${it.folder}` : '', lk ? `Status: ${lk.label}, ${pct}% (live from plan ${q.dir})` : `Status: ${st}, ${pct}%${it.updated ? ` (updated ${it.updated})` : ''}`, it.note && !lk ? `Note: ${it.note}` : '', q ? `Linked plan: ${q.dir}, stage ${q.stage || '-'}${q.active ? ', running' : ''}${q.held ? `, held: ${q.held}` : ''}` : '', a ? `Agent: ${a.model} round ${a.round}/7 ${a.step || ''} (${a.status})` : '', p.subSrc ? `Source: ${p.subSrc}` : `Folder: ~/dev/projects/plans/${p.dir} (_build/subitems.json)`].filter(Boolean).join('\n'); }
   if (k.startsWith('p:')) { const d = stLast?.plans.find((x) => x.dir === r.dir); if (d) return stMeta(d);
     return [`Plan ${r.dir}${r.cat ? ` (${r.cat})` : ''}`, `Stage: ${r.stage || '-'}${r.active ? `, running (${r.active})` : ''}${r.held ? `, held: ${r.held}` : ''}`, r.rev ? `Revision: ${r.rev.label}` : '', r.working?.length ? `Working: ${r.working.map((w) => typeof w === 'string' ? w : w.task || w.model || '').join('; ')}` : '', `Folder: ~/dev/projects/plans/${r.dir}`].filter(Boolean).join('\n'); }
   const p = r.progress;

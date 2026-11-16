@@ -69,7 +69,8 @@ npm run scaffold-harness          # add --dry-run first to see the paths
 
 That creates the empty queue folders and links `status-write.mjs`, `chat-write.mjs`, `owner-check.mjs`,
 `harness-set.mjs`, `io-guard.sh`, `auditq-wait.sh`, `auditq-wait.mjs` (the listener for native Windows, no bash needed),
-`jev-route.mjs`, `worker-launch.sh` and `worker-launch.mjs` into `<run>/bin` (10 tools; `doctor` checks the same list). Existing files are
+`jev-route.mjs`, `worker-launch.sh`, `worker-launch.mjs` and `done-ack.mjs` (finished-job notices) into `<run>/bin`
+(11 tools; `doctor` checks the same list). Existing files are
 preserved. A SuperAgent can then answer a refresh. Ask the app where everything is instead of guessing (the run folder is not
 inside the repo, and `AGENTGLIM_DATA` is usually unset):
 

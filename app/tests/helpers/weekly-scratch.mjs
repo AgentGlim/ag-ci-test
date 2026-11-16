@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-const BASE = process.env.TEST_SCRATCH_ARCHIVE || path.join(os.homedir(), 'dev/projects/plans/_reports/test-scratch-archive');
+const BASE = process.env.TEST_SCRATCH_ARCHIVE || path.join(os.tmpdir(), 'agentglim-test-scratch-archive');
 export function archiveScratch(dir, state, name, error = null) {
   if (!fs.existsSync(dir)) return;
   const root = path.join(BASE, state); fs.mkdirSync(root, { recursive: true });

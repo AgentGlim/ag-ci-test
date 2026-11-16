@@ -2,6 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { listProcesses, parsePs, parseCim } from '../proc.mjs';
+import { readProcessStat } from '../proc.mjs';
+import { pidIdentity, workerState, livePopulation } from '../live-workers.mjs';
+
+test('native start identities preserve macOS lstart and Windows FILETIME; PID reuse stays unknown', () => {
+  const mac = readProcessStat(42, null, { platform: 'darwin', run(command, args, options) {
+    assert.equal(command, 'ps');
+    assert.equal(options.env.LC_ALL, 'C');
+    return ' S 1 42 Mon Nov 16 14:16:09 2026\n';
+  } });
+  const win = readProcessStat(42, null, { platform: 'win32', run() {
+    return '{"pid":42,"start":"134077761690000001","executable":"C:/node.exe"}';
+  } });
+  for (const start of [mac.starttime, win.starttime]) {
+    const job = { id: 'job', pid: 42, pidStart: start, status: 'running' };
+    assert.equal(pidIdentity(job), `pid:42:${start}`);
+    assert.equal(workerState(job, { isLive: () => true }), 'live');
+    assert.equal(workerState({ ...job, heartbeat: Date.now() }, { isLive: () => false }), 'unknown');
+    assert.equal(livePopulation({ tracked: [job], harness: [{ ...job, id: 'copy' }] }, { isLive: () => true }).counts.live, 1);
+  }
+  assert.notEqual(pidIdentity({ pid: 42, pidStart: win.starttime }), pidIdentity({ pid: 42, pidStart: '134077761690000002' }));
+  assert.equal(readProcessStat(42, null, { platform: 'darwin', run: () => { throw Error('gone'); } }), null);
+  assert.equal(readProcessStat(42, null, { platform: 'win32', run: () => { throw Error('gone'); } }), null);
+  assert.equal(readProcessStat(42, '/missing-proc-fixture', { platform: 'darwin', run: () => assert.fail('fixture must win') }), null);
+});
 
 test('ps parser reads state, parent, terminal and quoted arguments', () => {
   const text = `  42 1 S+ ttys001 /usr/bin/node /usr/bin/node "two words" '' --flag

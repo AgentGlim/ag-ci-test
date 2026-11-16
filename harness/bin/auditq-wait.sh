@@ -33,6 +33,15 @@ requests() {
 printf -v STATUS_TOOL '%q' "$RUN/bin/status-write.mjs"
 printf -v CHAT_TOOL '%q' "$RUN/bin/chat-write.mjs"
 printf -v CHECK_TOOL '%q' "$RUN/bin/owner-check.mjs"
+printf -v DONE_TOOL '%q' "$RUN/bin/done-ack.mjs"
+# done-ack: finished jobs the owner has not seen (hint on CHAT:/STATUS: only; never a wake reason by itself)
+DA_DIR=${AGENTGLIM_DATA:-$HOME/.agentglim}/done-ack
+unseen_hint() {
+  local n=0 f
+  for f in "$DA_DIR"/*.json; do [ -f "$f" ] || continue; case "${f##*/}" in state.json) continue;; esac; [ -e "${f%.json}.ack" ] || n=$((n+1)); done
+  [ "$n" -gt 0 ] && echo "UNSEEN: $n finished jobs not seen (node $DONE_TOOL list; when the owner's own words are about one: node $DONE_TOOL ack <id> --quote \"<their words>\")"
+  return 0
+}
 # heartbeat (owner 2026-11-10): the header dot reports this as the listener's own, extra information; the armed
 # state is the SuperAgent's heartbeat (<data>/heartbeats/superagent) that AGENTS.md and SETUP.md tell the agent to touch.
 mkdir -p "$RUN/heartbeats"
@@ -51,10 +60,10 @@ for i in $(seq 1 "$ROUNDS"); do
   # does not advertise or wake for them; a mode_queue file is left for the user's own automation.
   # "refresh now" on the Observatory Status card (owner 2026-11-01): wake the watcher for a status answer
   asks=$(requests "$RUN/status_ask")
-  [ -n "$asks" ] && { echo "STATUS: $asks(owner pressed refresh now: run node $STATUS_TOOL --done ... --running ... --blocked ... --next ... --optimize ... with your own words; it marks the ask answered)"; [ -z "$pending" ] && exit 0; }
+  [ -n "$asks" ] && { echo "STATUS: $asks(owner pressed refresh now: run node $STATUS_TOOL --done ... --running ... --blocked ... --next ... --optimize ... with your own words; it marks the ask answered)"; unseen_hint; [ -z "$pending" ] && exit 0; }
   # Control page Watcher thread (plan 55 control): messages from /control wake the watcher; answer with chat-write.mjs
   chats=$(requests "$RUN/chat_inbox")
-  [ -n "$chats" ] && { echo "CHAT: $chats(read them, act, then: node $CHAT_TOOL --reply \"...\" --to <ms> [--ask Q --option A --option B --qid ID])"; [ -z "$pending" ] && exit 0; }
+  [ -n "$chats" ] && { echo "CHAT: $chats(read them, act, then: node $CHAT_TOOL --reply \"...\" --to <ms> [--ask Q --option A --option B --qid ID])"; unseen_hint; [ -z "$pending" ] && exit 0; }
   # "done" clicks on the Status card blockers (owner 2026-11-01): the owner says an item is handled; check it before it closes
   checks=$(requests "$RUN/owner_check")
   [ -n "$checks" ] && { echo "CHECK: $checks(owner marked items done: run node $CHECK_TOOL list, verify each one as deeply as it needs, then node $CHECK_TOOL confirm <id> \"evidence\" or node $CHECK_TOOL reopen <id> \"what is still missing\")"; [ -z "$pending" ] && exit 0; }

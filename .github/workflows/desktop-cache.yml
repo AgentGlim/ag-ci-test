@@ -1,0 +1,56 @@
+name: Desktop cache pilot
+
+# Manual pilot only: choose main in the dispatch UI. No automatic or publishing work.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/target
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+      - uses: Swatinem/rust-cache@v2
+        id: rust-cache
+        with:
+          shared-key: desktop-release-v1-${{ runner.os }}-${{ runner.arch }}
+          workspaces: desktop -> target
+          cache-bin: 'false'
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install and verify prebuilt Tauri CLI
+        run: npx --yes --package @tauri-apps/cli@2.12.4 tauri --version
+      - name: Warm release-profile dependencies without installers
+        working-directory: desktop
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+        run: |
+          start=$SECONDS
+          npx --yes --package @tauri-apps/cli@2.12.4 tauri build --no-bundle -- --locked
+          {
+            echo '## Desktop cache pilot'
+            echo "Runner: $RUNNER_OS / $RUNNER_ARCH"
+            echo "Exact cache hit: $CACHE_HIT"
+            echo "Build seconds: $((SECONDS-start))"
+            echo 'No installers or releases were published. Compare two main-branch runs before claiming savings.'
+          } >> "$GITHUB_STEP_SUMMARY"

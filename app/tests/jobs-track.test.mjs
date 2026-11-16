@@ -457,3 +457,17 @@ j.subprocess.check_output = gone
 assert not j.alive(999999999)
 `, [], { ...env, JOBS_TRACK_DIR: path.join(tmp('jt-mac-'), 'tracked-jobs') });
 });
+
+// done-ack (2026-11-14): the one-sentence description, quiet and launchedBy written at launch
+test('done-ack fields: --desc, [task: ...], [quiet], label sentence, launchedBy from the hook and AGENTGLIM_HEADLESS', { skip }, () => {
+  const a = jt(['start', '--harness', 'codex', '--label', 'x', '--desc', 'Fix the tray. More.', '--id', 'da-1']);
+  assert.equal(get(a).desc, 'Fix the tray.'); assert.equal(get(a).descFrom, 'flag');
+  const b = jt(['start', '--harness', 'codex', '--label', 'y', '--prompt', '[task: Build the side panel] go', '--quiet', '--id', 'da-2']);
+  assert.equal(get(b).descFrom, 'tag'); assert.equal(get(b).desc, 'Build the side panel'); assert.equal(get(b).quiet, true);
+  const c = jt(['start', '--harness', 'codex', '--label', '[plan: 68-x] agent icons fix', '--prompt', 'p [quiet]', '--id', 'da-3']);
+  assert.equal(get(c).label, 'agent icons fix'); assert.equal(get(c).descFrom, 'label'); assert.equal(get(c).quiet, true);
+  jt(['claude-hook'], JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_use_id: 'da4', session_id: 's1', agent_id: 'parent-a', cwd: dir, tool_input: { description: 'nested helper job', prompt: 'You are x. Do the thing.' } }));
+  assert.deepEqual(get('cc-da4').launchedBy, { harness: 'claude', sessionId: 's1', agentId: 'parent-a', headless: false });
+  const e = execFileSync(PYTHON, [SCRIPT, 'start', '--harness', 'pi', '--label', 'z', '--id', 'da-5'], { env: { ...env, AGENTGLIM_HEADLESS: '1' }, encoding: 'utf8' }).trim();
+  assert.equal(get(e).launchedBy.headless, true);
+});

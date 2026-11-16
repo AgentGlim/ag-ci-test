@@ -61,3 +61,9 @@ Privacy checks are contributor checks before commits, never user setup steps. Se
 - Merges: one source of truth, a `> **Folded into NN-slug** (date)` line at the top of the merged plan's PLAN.md. `subprojects.json` only adds names and item ids for older merges. Parents of folded plans (and plans the driver has not run yet) get a row in Active builds.
 - Icons: hand picks in `app/plan-icons.js` (HAND, by plan number); any other plan gets a POOL glyph by keywords, saved in `data/plan-icons.json`. Never the default "i".
 - Jobs: tag every launch with `--plan NN-slug` or a `[plan: NN-slug]` prompt tag; the inference order and end states are in `tools/addons/jobs-track.py`.
+
+## Finished jobs stay until seen (done-ack)
+
+Finished jobs stay green (failed: red) on the dashboard until the owner has seen them. When the owner's own message is
+about a finished job, answer, then run `node <run>/bin/done-ack.mjs ack <id> --quote "<their words>"`. Never mark a job
+seen because you reported it. `done-ack.mjs list` shows what is unseen.

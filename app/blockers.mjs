@@ -179,7 +179,7 @@ const FLAG_HELP = {
   'audit queue': ['Nobody is listening on the audit queue; premium audits fall back to Codex or wait.', 'Re-arm the watcher\'s queue listener.', 'bash _run/bin/auditq-wait.sh'],
   memory: ['RAM above 85%: new agents may be OOM-killed mid-round (rc 137, no handoff note).', 'Lower concurrency (speed strip) or stop the heaviest agent.', ''],
   'temporary storage': ['When temporary storage is full, agents may fail to write scratch files.', 'Find the largest scratch folders and move or delete them.', ''],
-  usage: ['A subscription window is near its cap; when it hits, every agent on it stops at once.', 'Slow that provider (speed strip) or let limit-pause stop agents cleanly before the cap.', ''],
+  usage: ['A subscription window is near its cap; when it hits, every agent on it stops at once.', 'Review provider mode and usage limits on the Status card; reduce provider concurrency if needed.', ''],
 };
 export function enrichFlags(flags, { plans, items, apPages, lim }) {
   const byDir = new Map((plans || []).map((p) => [p.dir, p])), asks = (items || []).filter((i) => i.kind === 'ask' && !i.done), claims = readClaims();

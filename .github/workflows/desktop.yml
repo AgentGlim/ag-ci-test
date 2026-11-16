@@ -5,10 +5,39 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
+
+# Serialize the same tag without cancelling a release already in progress.
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  # Re-run the complete CI suite on the exact tagged commit, not an unrelated green main run.
+  verify:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  prepare:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Refuse uploads to an already-published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node dev/ci/publish-release.mjs --check-draft
+
   build:
+    needs: [verify, prepare]
+    permissions:
+      contents: write # tauri-action uploads to a draft, never a published release
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -22,29 +51,65 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/target
+      CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
-      - name: Linux build dependencies
+      - name: Linux build and smoke dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.12.4 --locked
-      - name: Build and upload installers
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils xvfb x11-utils dbus-x11
+      # Shared with the main-branch warmer. Tags restore but never create tag-scoped caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-release-v1-${{ runner.os }}-${{ runner.arch }}
+          workspaces: desktop -> target
+          cache-bin: 'false'
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install and verify prebuilt Tauri CLI
+        run: npx --yes --package @tauri-apps/cli@2.12.4 tauri --version
+      - name: Build installers and upload to draft
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
-          tauriScript: cargo tauri
+          tauriScript: npx --yes --package @tauri-apps/cli@2.12.4 tauri
           args: --bundles ${{ matrix.bundles }} -- --locked
           tagName: ${{ github.ref_name }}
           releaseName: AgentGlim ${{ github.ref_name }}
           releaseBody: 'AgentGlim desktop installers. Requires a separate installation of Node.js 22 or newer.'
-          releaseDraft: false
+          releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+      - name: Linux native-window and server-lifecycle smoke
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- node desktop/smoke-test.mjs
+      - name: Smoke diagnostics on failure
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-${{ matrix.os }}
+          path: desktop/target/smoke-*/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # A failed platform or smoke test leaves only a draft. No always() or continue-on-error here.
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Validate the draft and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node dev/ci/publish-release.mjs

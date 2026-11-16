@@ -14,6 +14,7 @@ import { providerKeyEntries } from './setup.mjs';
 import { key, nextKey } from './env.mjs'; // API keys: process env, then <repo>/.env, then ~/.bashrc (deprecated)
 import { DATA, RUN } from './paths.mjs';
 import { modelPricesFile } from './integrations.mjs';
+import { aliasOf, canonicalModel, KIND_MODEL, harnessProviders } from './model-review.mjs';
 const APPROVED = `${DATA}/classes.json`;
 const JEV_CACHE = `${DATA}/jev-cache.json`;
 export const JEV_USAGE = `${DATA}/jev-usage.ndjson`; // one line per Jev call: the server charts it as provider "jev"
@@ -82,7 +83,7 @@ export function ruleClass(kind, model) {
   if (k.startsWith('gofree:')) return { provider: 'opencode-go', class: 'free', rule: 'gofree: kind' };
   if (k === 'cloud') return { provider: 'claude-cloud', class: 'other', rule: 'cloud: Claude Code cloud session (cloud credit)' }; // cloud-round.sh (2026-11-04)
   if (/^openrouter\//.test(m) || k === 'pi-or') return { provider: 'openrouter', class: free ? 'free' : 'paid-api', rule: 'openrouter model' };
-  if (/claude|opus|sonnet|haiku/.test(m) || /^(claude-)?(haiku|sonnet|opus)$/.test(k)) return { provider: 'anthropic', class: 'subscription', rule: 'Claude model name' };
+  if (/claude|opus|sonnet|haiku/.test(m) || /^(claude-)?(haiku|sonnet|opus|opus48|fable)$/.test(k)) return { provider: 'anthropic', class: 'subscription', rule: 'Claude model name' };
   if (/^(gpt-|o\d\b)|codex/.test(m) || /^(codex|luna)/.test(k)) return { provider: 'codex', class: 'subscription', rule: 'GPT/Codex model name' };
   if (/^ai-local-workers\/qwen3\.6|^qwen3\.6/.test(m)) return { provider: 'qwen', class: 'local', rule: 'Owner Qwen3.6 116K four-worker pilot' };
   if (/^strata\/|flash-next/.test(m) || (k === 'pi-local' && !m)) return { provider: 'qwen', class: 'local', rule: 'Local Qwen model' };
@@ -175,8 +176,11 @@ export function classify(kind, model) {
   const jev = jevAnswer(key);
   const price = priceOf(model);
   if (a) return { key, provider: a.provider, class: a.class, source: 'approved', approved: true, rule, jev, price };
+  // alias table: one approval covers every name of a model (opus48, claude-opus-4-8, anthropic/claude-opus-4-8, ...)
+  const al = aliasOf(canonicalModel(model) || KIND_MODEL[kindOf(kind)]), hp = harnessProviders(kind);
+  if (al && (!hp.length || hp.includes(al.provider))) return { key, provider: al.provider, class: al.class, source: 'approved', approved: true, alias: al.canonical, rule, jev, price: price || priceOf(al.canonical) };
   if (rule) return { key, provider: rule.provider, class: rule.class, source: 'rule', approved: false, rule, jev, price };
-  if (jev?.provider) return { key, provider: jev.provider, class: jev.class || 'other', source: 'jev', approved: false, rule, jev, price };
+  // a Jev answer from the name alone is a hint shown on the card, never the provider (2026-11-14: opus48 -> ElevenLabs 68%)
   return { key, provider: '', class: 'other', source: 'unknown', approved: false, rule, jev, price };
 }
 

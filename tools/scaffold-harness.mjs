@@ -30,7 +30,8 @@ This folder is optional. AgentGlim shows your plans without it; it holds the que
 SuperAgent answer the dashboard's controls.
 
 - \`bin/\` links the tools AgentGlim ships (status-write, chat-write, owner-check, harness-set, io-guard,
-  auditq-wait, jev-route, worker-launch). They are symlinks to the AgentGlim checkout, so an update is picked up at once.
+  auditq-wait, jev-route, worker-launch, done-ack). They are symlinks to the AgentGlim checkout, so an update is
+  picked up at once.
 - \`audit_queue/\`, \`status_ask/\`, \`chat_inbox/\` and \`owner_check/\` are requests for the SuperAgent.
   \`mode_queue/\` is left for your own automation; AgentGlim ships no mode handler.
 

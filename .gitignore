@@ -67,6 +67,9 @@ goal-map.json
 /subprojects.json
 /public.txt
 /dev/release.sh
+/dev/local-ci.sh
+/dev/local-ci.py
+/dev/local-ci_test.py
 /skills/
 /app/dev-skills.mjs
 /harness/*
@@ -85,6 +88,7 @@ goal-map.json
 !/harness/bin/harness-set.mjs
 !/harness/bin/io-guard.sh
 !/harness/bin/auditq-wait.sh
+!/harness/bin/done-ack.mjs
 !/harness/bin/auditq-wait.mjs
 !/harness/bin/worker-launch.sh
 !/harness/bin/worker-launch.mjs

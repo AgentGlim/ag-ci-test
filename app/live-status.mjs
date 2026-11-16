@@ -4,9 +4,11 @@ function mentions(job, item) {
   const text = ` ${words(`${job.label || ''} ${job.note || ''}`).join(' ')} `;
   const title = words(item.title || item.label || item.name).join(' ');
   if (title && text.includes(` ${title} `)) return true;
-  if (item.id == null) return false;
-  const id = String(item.id).toLowerCase();
-  return words(`${job.label || ''} ${job.note || ''}`).some((w) => w === id || (/^\d+$/.test(id) && /^\d+$/.test(w) && Number(w) === Number(id)));
+  // folder: the old folder-style id a job label may still use (a feature id is now an F-number)
+  const ids = [item.folder, item.id].filter((v) => v != null).map((v) => String(v).toLowerCase());
+  if (!ids.length) return false;
+  const jobWords = words(`${job.label || ''} ${job.note || ''}`);
+  return ids.some((id) => jobWords.some((w) => w === id || (/^\d+$/.test(id) && /^\d+$/.test(w) && Number(w) === Number(id))));
 }
 
 // Prefer the sub-items named by each job. A job naming none of them backs the whole plan.

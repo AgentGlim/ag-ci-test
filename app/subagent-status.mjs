@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './paths.mjs';
+import { readStat } from './proc.mjs';
 export const IDLE_MS=20*60e3;
 export function transcriptStatus(records,{mtime=Date.now(),now=Date.now()}={}) {
   const parsed=typeof records==='string' ? records.split('\n').flatMap(l=>{try{return [JSON.parse(l)];}catch{return [];}}) : records;
@@ -54,7 +55,9 @@ export function subagentStatus(jobs,{home=HOME,now=Date.now()}={}) {
     try {
       const chunks=files.map(f=>tail(f)).sort((a,b)=>a.mtime-b.mtime);
       const sig=files.join('|')+chunks.map(x=>x.mtime+':'+x.size).join('|'),hit=parsed.get(j.id ?? sig);let status;if(hit && hit.sig===sig && now-hit.at<60000)status=hit.status;else{status=transcriptStatus(chunks.map(x=>x.text).join('\n'),{mtime:chunks.at(-1).mtime,now});parsed.set(j.id ?? sig,{sig,at:now,status});} // CPU fix 2026-11-13: reparse only when a transcript changed, or each minute for the idle clock
-      return {...j,...status,activityHint:status.activity==='finished' ? 'Finished but still listed by the parent agent' : status.activity==='idle' ? 'Waiting on background work; no new records for 20 minutes' : null};
+      const parent = readStat(j.sessionPid);
+      const parentVerified = !!parent && j.sessionPidStart != null && parent.starttime === Number(j.sessionPidStart) && parent.state !== 'Z';
+      return {...j,...status,transcriptVerified: true,parentVerified,activityHint:status.activity==='finished' ? 'Finished but still listed by the parent agent' : status.activity==='idle' ? 'Waiting on background work; no new records for 20 minutes' : null};
     } catch{return {...j,activity:'unknown'};}
   });
   return {jobs:list,counts:{running:list.filter(j=>j.kind==='subagent' && j.status==='running' && j.activity==='running').length,idle:list.filter(j=>j.kind==='subagent' && j.status==='running' && j.activity==='idle').length,finished:list.filter(j=>j.kind==='subagent' && j.status==='running' && j.activity==='finished').length,unknown:list.filter(j=>j.kind==='subagent' && j.status==='running' && j.activity==='unknown').length},hint:'Finished-but-listed agents are harmless; ask your agent to stop them (TaskStop) to tidy the panel.'};

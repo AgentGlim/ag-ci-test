@@ -19,6 +19,7 @@ export function sectionOf(p) {
   if (!p || typeof p !== 'object') return 'pipeline';
   if (String(p.dir || '') === AGENTGLIM_PLAN) return 'active'; // the AgentGlim row lives in Active builds
   if (p.activeBuild || p.liveBuild) return 'active'; // a live build round
+  if (p.doneAckUnseen > 0) return 'active'; // Q3 (owner 2026-11-14): a finished job not seen yet keeps the row in Active builds
   // product row: a plan other plans are folded into, or a plan the driver has not run yet
   const product = !p.foldedInto && ((Array.isArray(p.merged) && p.merged.length > 0) || !!p.noState);
   if (product && p.noState) return 'active'; // plan written, waiting for the owner; the driver never ran it

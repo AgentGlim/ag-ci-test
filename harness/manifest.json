@@ -29,6 +29,17 @@
       "next": "Run npm run scaffold-harness to link it into the run folder."
     },
     {
+      "id": "done-ack",
+      "title": "Finished jobs not seen",
+      "path": "{run}/bin/done-ack.mjs",
+      "packaged": "{agentglim}/harness/bin/done-ack.mjs",
+      "home": "agentglim",
+      "decision": "packaged",
+      "surface": ["Active builds: finished icons and side panel"],
+      "why": "Lists finished jobs the owner has not seen and marks them seen when the owner's own chat message is about them (--quote required).",
+      "next": "Run npm run scaffold-harness to link it into the run folder."
+    },
+    {
       "id": "owner-check",
       "title": "Done-claim checker",
       "path": "{run}/bin/owner-check.mjs",

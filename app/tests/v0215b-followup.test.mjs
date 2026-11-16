@@ -12,6 +12,7 @@ import { once } from 'node:events';
 import { waitForServerReady } from './helpers/server-ready.mjs';
 import { statusFrom } from '../update-check.mjs';
 import { pathToFileURL } from 'node:url';
+import { archiveScratch } from './helpers/weekly-scratch.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const LISTENER = path.join(REPO, 'harness', 'bin', 'auditq-wait.sh');
@@ -44,7 +45,11 @@ const firstRun = (env, home) => {
 
 const start = async (t, home, env) => {
   const srv = spawn(process.execPath, ['app/server.mjs', '0'], { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'] });
-  t.after(async () => { srv.kill(); if (srv.exitCode === null) await once(srv, 'exit'); fs.rmSync(home, { recursive: true, force: true }); });
+  t.after(async () => {
+    if (srv.exitCode === null && srv.signalCode === null) { const exited = once(srv, 'exit'); srv.kill(); await exited; }
+    // Native CLI probes can still finish writing after the server exits. Preserve the fixture atomically.
+    archiveScratch(home, t.passed ? 'passed' : 'failed', t.name, t.error);
+  });
   return `http://127.0.0.1:${await waitForServerReady(srv)}`;
 };
 
@@ -283,7 +288,9 @@ test('npm run update pulls main (fast-forward only) and re-links the run folder 
 });
 
 test('one update method in the docs, no placeholder clone URL, no owner notes in the public AGENTS.md', () => {
-  const install = readDoc('public-docs/install.md'), readme = read('README.md'), setup = read('SETUP.md'), agents = read('AGENTS.md');
+  const install = readDoc('public-docs/install.md'), readme = read('README.md'), setup = read('SETUP.md');
+  // Private checkout keeps owner learnings in its own AGENTS.md; public.txt exports this clean template.
+  const agents = fs.existsSync(path.join(REPO, 'public.txt')) ? readDoc('public-docs/AGENTS.md') : read('AGENTS.md');
   assert.match(install, /git clone https:\/\/github\.com\/AgentGlim\/agentglim\.git/);
   assert.doesNotMatch(install, /<you>/, 'no placeholder clone URL');
   assert.match(install, /Linux, macOS and Windows/, 'the platforms it actually runs on');

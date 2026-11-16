@@ -6,7 +6,7 @@
 // from its tail only (last 512 KB, widened once to 4 MB) and cached by mtime+size, so a finished helper is read once.
 import fs from 'node:fs';
 import { PLANS } from './paths.mjs';
-import { listProcesses } from './proc.mjs';
+import { listProcesses, readStat } from './proc.mjs';
 
 const HOME = process.env.HOME;
 // PLANS can be a symlinked path; Claude Code names its project folder after the real folder the session started in
@@ -25,9 +25,10 @@ function readSpan(file, size, from, n) {
 }
 const meta = (file) => {
   const f = file.replace(/\.jsonl$/, '.meta.json');
-  if (metaCache.has(f)) return metaCache.get(f);
+  // Finished metadata can change after its description was first cached.
+
   let m = {}; try { m = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
-  const out = { description: m.description || '', alias: m.model || '' };
+  const out = { description: m.description || '', alias: m.model || '', finished: m.finished === true };
   if (out.description) metaCache.set(f, out); // a not-yet-written meta file is retried
   return out;
 };
@@ -43,7 +44,7 @@ function readTail(file, size) {
       const ln = lines[i];
       const isA = ln.includes('"type":"assistant"'), isU = ln.includes('"type":"user"');
       if (!isA && !isU) continue;
-      if (ended === null) ended = (isU && ln.includes('"toolEndsTurn":true')) || (isA && ln.includes('"stop_reason":"end_turn"'));
+      if (ended === null) ended = (isU && (ln.includes('"toolEndsTurn":true') || ln.includes('[Request interrupted by user]'))) || (isA && ln.includes('"stop_reason":"end_turn"'));
       if (!isA || !ln.includes('"usage"')) continue;
       try {
         const m = JSON.parse(ln).message, u = m?.usage;
@@ -66,14 +67,13 @@ function started(file, st) {
   return st.birthtimeMs || st.mtimeMs;
 }
 function helper(file, st) {
-  const c = cache.get(file);
-  if (c && c.mtime === st.mtimeMs && c.size === st.size) return c.d;
-  const mt = meta(file);
+  const c = cache.get(file), mt = meta(file);
+  if (c && c.mtime === st.mtimeMs && c.size === st.size && c.finished === mt.finished) return c.d;
   let tail = { model: null, tokens: 0, fin: false };
   try { tail = readTail(file, st.size); } catch {}
   const d = { id: file.match(/agent-([^/.]+)\.jsonl$/)?.[1] || file, task: mt.description || 'background helper', model: tail.model || ALIAS[mt.alias] || mt.alias || null,
-    tokens: tail.tokens, final: tail.fin, start: c?.d.start || started(file, st), end: st.mtimeMs };
-  cache.set(file, { mtime: st.mtimeMs, size: st.size, d });
+    tokens: tail.tokens, final: tail.fin || mt.finished, start: c?.d.start || started(file, st), end: st.mtimeMs };
+  cache.set(file, { mtime: st.mtimeMs, size: st.size, finished: mt.finished, d });
   return d;
 }
 // live watcher sessions: interactive claude whose folder is the plans folder itself
@@ -85,7 +85,9 @@ function watcherSessions() {
     try {
       const s = JSON.parse(fs.readFileSync(`${HOME}/.claude/sessions/${f}`, 'utf8'));
       if (![PLANS, PLANS_REAL].includes(s.cwd) || (s.kind && s.kind !== 'interactive') || !livePids.has(Number(s.pid))) continue;
-      out.push({ id: s.sessionId, name: s.name || `pid ${s.pid}`, status: s.status || null });
+      const st = readStat(s.pid);
+      if (!st || s.procStart == null || Number(s.procStart) !== st.starttime || st.state === 'Z') continue;
+      out.push({ pid: Number(s.pid), pidStart: st.starttime, id: s.sessionId, name: s.name || `pid ${s.pid}`, status: s.status || null });
     } catch {}
   }
   return out;
@@ -107,13 +109,14 @@ function scan() {
       if (!/^agent-.*\.jsonl$/.test(n)) continue;
       let st; try { st = fs.statSync(`${d}/${n}`); } catch { continue; }
       if (st.mtimeMs < day) continue;
-      helpers.push(helper(`${d}/${n}`, st));
+      const parent = sessions.find(s => s.id === d.split('/').at(-2));
+      helpers.push({ ...helper(`${d}/${n}`, st), transcriptVerified: true, parentVerified: !!parent, sessionPid: parent?.pid, sessionPidStart: parent?.pidStart, lastActivity: st.mtimeMs, activity: 'running' });
     }
   }
   const live = helpers.filter((h) => !h.final && now - h.end < LIVE_MS).sort((a, b) => a.start - b.start);
   const liveIds = new Set(live.map((h) => h.id));
   const done = helpers.filter((h) => !liveIds.has(h.id));
-  return { sessions, live: live.map((h) => ({ id: h.id, task: h.task, model: h.model, tokens: h.tokens, since: h.start })), running: live.length, done: done.length,
+  return { sessions, live: live.map((h) => ({ ...h, id: h.id, task: h.task, model: h.model, tokens: h.tokens, since: h.start })), running: live.length, done: done.length,
     tokens: helpers.reduce((n, h) => n + h.tokens, 0) };
 }
 // the row for /api/snapshot: null never, so the row is drawn (as "idle") even with no helpers or no watcher session

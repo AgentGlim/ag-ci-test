@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { RUN } from './paths.mjs';
-import { readStat as readProcStat, procRoot } from './proc.mjs';
+import { readProcessStat, procRoot } from './proc.mjs';
 import { python } from './python.mjs';
 import { execFile } from 'node:child_process';
 import { foldWrappers } from './working.mjs';
@@ -99,10 +99,17 @@ export function cleanLabel(label) {
 // hidden" on their row. Older done jobs disappear: a small one for good, a feature-sized one lives on as a saved sub-item
 // (saveFeatures). Newest first.
 export function visibleJobs(list, now = Date.now()) {
-  // an agent.sh wrapper and the headless take it queued are one job (same outdir): one row, the take's model
+  // Fold only proved wrapper/take lineage; preserve identity, evidence, raw IDs and attempt generation.
   return foldWrappers(list.filter(Boolean)).filter((j) => j && (j.status === 'running' || now - (j.ended || 0) < RECENT_MS))
     .sort((a, b) => (b.started || 0) - (a.started || 0))
-    .map((j) => ({ id: j.id, project: j.project, isPlan: !!j.isPlan, kind: KIND_LABEL[j.kind] ? j.kind : 'one-on-one',
+    .map((j) => ({
+      pid: j.pid, pidStart: j.pidStart, parentPid: j.parentPid, parentStart: j.parentStart,
+      heartbeat: j.heartbeat, sessionPid: j.sessionPid, sessionPidStart: j.sessionPidStart, agentId: j.agentId,
+      dispatchGeneration: j.dispatchGeneration, dispatchKey: j.dispatchKey, dispatchVerified: j.dispatchVerified,
+      transcriptVerified: j.transcriptVerified, parentVerified: j.parentVerified, lastActivity: j.lastActivity, rawIds: j.rawIds,
+      lineageRecords: (j.lineageRecords || []).map(w => ({ id: w.id, pid: w.pid, pidStart: w.pidStart, launcher: w.launcher,
+        req: w.req, dispatchGeneration: w.dispatchGeneration, dispatchVerified: w.dispatchVerified })),
+      id: j.id, project: j.project, isPlan: !!j.isPlan, kind: KIND_LABEL[j.kind] ? j.kind : 'one-on-one',
       harness: j.harness || '?', model: (j.model === 'opus48' ? CLAUDE_KIND_ID.opus48 : j.model) || null, label: cleanLabel(j.label), slug: j.slug || null, note: j.note || null, status: shownStatus(j), activity: j.activity, activityHint: j.activityHint, rc: j.rc ?? null,
       endReason: j.endReason || null, started: j.started || null, touches: j.touches || null, oneOff: isOneOff(j, now), ended: j.ended || null, outdir: j.outdir || null, launcher: j.launcher || null,
       projectFrom: j.projectFrom || null, req: j.req || null, wrapperOf: j.wrapperOf || null, hasReport: !!(j.summary || j.outdir) }));
@@ -112,8 +119,8 @@ export function visibleJobs(list, now = Date.now()) {
 // with a hint once its output files have been quiet for 20 min. A finished record without an exit code gets one from
 // <outdir>/rc or agent.sh's "end ... rc=N" meta line (the reaper uses the same files).
 export function pidAlive(pid, start, root = procRoot()) {
-  const st = readProcStat(pid, root);
-  return !!st && st.state !== 'Z' && (start == null || st.starttime === Number(start));
+  const st = readProcessStat(pid, root);
+  return !!st && st.state !== 'Z' && (start == null || String(st.starttime) === String(start));
 }
 const OUT_FILES = ['events.jsonl', 'last.txt', 'stderr.log', 'headless.txt', 'meta'];
 export function outdirRc(o, since = 0) {
