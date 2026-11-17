@@ -42,3 +42,8 @@ Back up existing files before edits. Keep archived copies and private screenshot
 The desktop staging script includes generic add-ons and bundled project skills but never machine skills, profiles,
 .env files, logs or runtime data. Node can be shipped as a platform-specific licensed sidecar in a future installer;
 currently it must be installed separately. Chromium, Python, harness CLIs, local models and Tailscale stay optional.
+
+The unit test command runs files sequentially. Many files boot real fixture servers with
+fresh SQLite stores; parallel cold starts compete for synchronous disk writes on local
+CI runners under I/O throttling. The 60-second listening-signal wait and three-minute
+test limit remain unchanged. Tests that explicitly exercise parallel servers still do so.

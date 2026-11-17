@@ -2696,7 +2696,7 @@ function apExport(only) {
     const i = byId[id]; const what = i ? `[${apShort(i.project)}] ${AP_KIND[i.kind] || i.kind}${i.key && !['ask', 'verify', 'audit'].includes(i.key) ? ' ' + i.key : ''}: ${i.title}` : id;
     return `- ${what}\n  choice: ${p.c || '(none)'}${p.n ? `\n  note: ${p.n}` : ''}\n  id: ${id}`;
   });
-  return `# Approvals: The owner's choices (${new Date().toLocaleString()})\n\n${rows.join('\n') || '(no choices picked)'}\n`;
+  return `# Approvals: The owner's choices\n\n${rows.join('\n') || '(no choices picked)'}\n`;
 }
 $('approvals').addEventListener('click', async (e) => {
   if (e.target.closest('h2.tg')) { apMin = !apMin; apSave(); return apRender(); }

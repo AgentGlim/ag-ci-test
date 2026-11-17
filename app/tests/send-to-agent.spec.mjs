@@ -34,6 +34,7 @@ try {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    await page.clock.install();
     await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
     const card = page.locator('#approvals .ai', { hasText: 'Pick the fixture option' });
     await card.waitFor({ timeout: 20000 });
@@ -54,13 +55,16 @@ try {
       let files = fs.readdirSync(inbox).filter((f) => f.endsWith('.json'));
       assert.equal(files.length, 1);
       assert.match(JSON.parse(fs.readFileSync(path.join(inbox, files[0]), 'utf8')).text, /fixture note/);
-      // click again: same text, no duplicate
+      // Cross a wall-clock second: unchanged choices must still deduplicate.
+      await page.clock.setSystemTime(new Date(Date.now() + 5000));
+      const resent = page.waitForResponse(r => r.url().endsWith('/api/approvals/send') && r.request().method() === 'POST');
       await page.locator('#approvals button[data-act=send]').click();
-      await page.waitForTimeout(800);
+      assert.equal((await resent).status(), 200);
       files = fs.readdirSync(inbox).filter((f) => f.endsWith('.json'));
       assert.equal(files.length, 1, 'no duplicate on resend');
       // the agent answers: the card turns to read
       fs.renameSync(path.join(inbox, files[0]), path.join(inbox, files[0] + '.answered'));
+      await page.clock.runFor(3100);
       await page.waitForSelector('#apSend .asr[data-state=read]', { timeout: 10000 });
     } else {
       assert.equal(st, 'failed', txt);
