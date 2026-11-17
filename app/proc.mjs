@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
-import { queryWindowsProcess } from './windows-processes.mjs';
+import { queryWindowsProcessAsync } from './windows-processes.mjs';
+import { EventEmitter } from 'node:events';
 
 // One proc-root switch for every process read (R9.1). AGENTGLIM_PROC points tests and
 // fixture runs at a recorded tree; a platform without procfs has no root at all.
@@ -34,25 +35,91 @@ export function readStat(pid, root = procRoot()) {
     pgid: Number(rest[2]), tty: Number(rest[4]), starttime: Number(rest[19]), raw };
 }
 
+// Native identity queries must never stall startup or an HTTP scan. Share each PID's
+// result across F31 readers, including misses. Expired evidence becomes unknown while
+// refreshing: a stale start token must not keep a dead/reused PID counted as live.
+// Fairness: a read that finds every query slot busy keeps its place in a FIFO bounded
+// by the cache size. A freed slot serves that FIFO before any later read, so hung early
+// PIDs whose misses expire cannot keep re-taking the slots and starve later workers.
+export function createNativeProcessStatReader({ platform = process.platform, run = execFile, now = Date.now,
+  ttl = 5000, timeout = 5000, maxConcurrent = 4, maxEntries = 512, onChange = () => {} } = {}) {
+  const cache = new Map(), waiting = [];
+  let active = 0;
+  const start = (pid, entry) => {
+    entry.state = 'pending';
+    active++;
+    let child, timer;
+    const done = row => {
+      if (entry.state !== 'pending') return; // Ignore late completion after the wall-clock deadline.
+      clearTimeout(timer);
+      entry.state = 'done';
+      entry.row = row;
+      entry.expires = now() + ttl;
+      active--;
+      pump();
+      onChange();
+    };
+    // execFile's timeout waits for the child to close; also bound our own wait if
+    // PowerShell never closes its pipes. Reads always return immediately either way.
+    timer = setTimeout(() => {
+      done(null);
+      try { child?.kill(); } catch { /* already exited */ }
+    }, timeout);
+    timer.unref?.();
+    try {
+      if (platform === 'win32') {
+        child = queryWindowsProcessAsync(pid, row => done(row ? { ...row, state: 'S', starttime: row.start } : null), { run, timeout });
+      } else {
+        child = run('ps', ['-p', String(pid), '-o', 'stat=,ppid=,pgid=,lstart='], {
+          encoding: 'utf8', timeout, env: { ...process.env, LC_ALL: 'C' },
+        }, (error, output) => {
+          const fields = error ? [] : String(output).trim().split(/\s+/);
+          done(fields.length === 8 ? { pid, state: fields[0][0], ppid: Number(fields[1]),
+            pgid: Number(fields[2]), starttime: fields.slice(3).join(' ') } : null);
+        });
+      }
+    } catch { done(null); }
+  };
+  // Oldest waiter first; a waiter evicted from the cache has lost its place.
+  function pump() {
+    while (active < maxConcurrent && waiting.length) {
+      const pid = waiting.shift(), entry = cache.get(pid);
+      if (entry?.state === 'waiting') start(pid, entry);
+    }
+  }
+  return pid => {
+    pid = Number(pid);
+    if (!Number.isInteger(pid) || pid <= 1 || !['win32', 'darwin'].includes(platform)) return null;
+    let entry = cache.get(pid);
+    if (entry && entry.state !== 'done') return null; // pending or already waiting its turn
+    if (entry && now() < entry.expires) return entry.row;
+    if (!entry && cache.size >= maxEntries) {
+      // No unbounded queue or process fan-out when a large registry is scanned.
+      const oldest = [...cache].find(([, value]) => value.state === 'done');
+      if (!oldest) return null;
+      cache.delete(oldest[0]);
+    }
+    // Re-insert so cache eviction order follows the latest request, then wait behind
+    // every earlier waiter. Expired evidence is discarded, never served while refreshing.
+    cache.delete(pid);
+    entry = { state: 'waiting', row: null, expires: 0 };
+    cache.set(pid, entry);
+    waiting.push(pid);
+    pump();
+    return null;
+  };
+}
+const processStatEvents = new EventEmitter();
+export function onProcessStatChange(listener) {
+  processStatEvents.on('change', listener);
+  return () => processStatEvents.off('change', listener);
+}
+const nativeProcessStat = createNativeProcessStatReader({ onChange: () => processStatEvents.emit('change') });
+
 // Match jobs-track's native start identity without converting FILETIME to a lossy Number.
 // A fixture root always wins; an absent fixture pid must never consult the real host.
-export function readProcessStat(pid, root = procRoot(), { platform = process.platform, run = execFileSync } = {}) {
-  if (root) return readStat(pid, root);
-  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return null;
-  if (platform === 'win32') {
-    const row = queryWindowsProcess(Number(pid), run);
-    return row ? { pid: Number(pid), state: 'S', starttime: row.start } : null;
-  }
-  if (platform === 'darwin') {
-    try {
-      const fields = run('ps', ['-p', String(pid), '-o', 'stat=,ppid=,pgid=,lstart='], {
-        encoding: 'utf8', timeout: 3000, env: { ...process.env, LC_ALL: 'C' },
-      }).trim().split(/\s+/);
-      if (fields.length !== 8) return null;
-      return { pid: Number(pid), state: fields[0][0], ppid: Number(fields[1]), pgid: Number(fields[2]), starttime: fields.slice(3).join(' ') };
-    } catch { return null; }
-  }
-  return null;
+export function readProcessStat(pid, root = procRoot(), readNative = nativeProcessStat) {
+  return root ? readStat(pid, root) : readNative(pid);
 }
 
 export function readCmdline(pid, root = procRoot()) {

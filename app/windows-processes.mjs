@@ -1,17 +1,27 @@
 // Private launch registry shared with jobs-track.py. Never enumerate the Windows process table.
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readJson } from './price-data.mjs';
 
+const processArgs = pid => ['-NoProfile', '-NonInteractive', '-Command',
+  `$p=Get-Process -Id ${+pid} -ErrorAction Stop; @{pid=$p.Id; start=$p.StartTime.ToFileTimeUtc().ToString(); executable=$p.Path; rss=$p.WorkingSet64} | ConvertTo-Json -Compress`];
+function parseProcess(pid, output) {
+  try {
+    const row = JSON.parse(output.replace(/^\uFEFF/, ''));
+    return row.pid === +pid && typeof row.start === 'string' && /^\d+$/.test(row.start)
+      && typeof row.executable === 'string' && row.executable ? row : null;
+  } catch { return null; }
+}
 export function queryWindowsProcess(pid, run = execFileSync) {
   if (!Number.isInteger(+pid) || +pid <= 1) return null;
-  try {
-    const row = JSON.parse(run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `$p=Get-Process -Id ${+pid} -ErrorAction Stop; @{pid=$p.Id; start=$p.StartTime.ToFileTimeUtc().ToString(); executable=$p.Path; rss=$p.WorkingSet64} | ConvertTo-Json -Compress`],
-    { encoding:'utf8', timeout:5000, windowsHide:true }));
-    return row.pid === +pid && row.start && row.executable ? row : null;
-  } catch { return null; }
+  try { return parseProcess(pid, run('powershell.exe', processArgs(pid), { encoding:'utf8', timeout:5000, windowsHide:true })); }
+  catch { return null; }
+}
+export function queryWindowsProcessAsync(pid, callback, { run = execFile, timeout = 5000 } = {}) {
+  if (!Number.isInteger(+pid) || +pid <= 1) { callback(null); return; }
+  return run('powershell.exe', processArgs(pid), { encoding:'utf8', timeout, windowsHide:true },
+    (error, output) => callback(error ? null : parseProcess(pid, output)));
 }
 export function sameWindowsIdentity(a,b) {
   return !!(a && b && a.pid === b.pid && typeof a.start === 'string' && a.start && a.start === b.start

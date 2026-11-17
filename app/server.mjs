@@ -24,7 +24,7 @@ import './env.mjs'; // first: API keys and settings from <repo>/.env (process en
 import { ENV_FILE, keyStatuses } from './env.mjs'; // Setup page shows where keys go
 import fs from 'node:fs';
 import os from 'node:os';
-import { listProcesses, readMemoryInfo, readStat } from './proc.mjs';
+import { listProcesses, readMemoryInfo, readStat, onProcessStatChange } from './proc.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
@@ -1967,6 +1967,18 @@ function view(base, f) {
 
 // ---------- http ----------
 let base = scan();
+// Native identity evidence arrives after startup. Rebuild one shared snapshot so
+// F31's card and row counts agree, without waiting for the next minute-long scan.
+let identityRefresh;
+onProcessStatChange(() => {
+  if (identityRefresh) return;
+  identityRefresh = setTimeout(() => {
+    identityRefresh = null;
+    tjCache.at = 0;
+    try { base = scan(); if (!DEV) procGuard.scan(); } catch (e) { console.error('identity scan failed', e); }
+  }, 100);
+  identityRefresh.unref();
+});
 agyPriceRefresh(); setInterval(agyPriceRefresh, 24 * 3600e3); // Antigravity live prices, daily
 // CPU fix 2026-11-13: 30 s while a dashboard is open (pushes stay every 15 s), 60 s when nobody watches
 let lastScan = Date.now();

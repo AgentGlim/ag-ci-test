@@ -1,0 +1,157 @@
+{
+ "about": "Synthetic fixture for the feature-number tests. Every feature has an F-number id (F01, F23): whoever adds a feature takes the next free number, max F-number + 1, and numbers are never reused (F17 stays unused because it was skipped). The real tracker is the owner's gitignored features.json at the repo root; this copy is neutral test data with the same shape and numbering, so a fresh clone or worktree can run the numbering rules without it.",
+ "updated": "2026-01-01",
+ "_note": "Test fixture: neutral synthetic data only. No owner progress, status, plan, intake or prompt text. app/tests/feature-numbers.test.mjs runs the numbering rules on this file in every checkout, and on the owner's real features.json as well when it exists. Add a row here only when the numbering shape changes (ids, titles, folders, the about rule), not when a real feature moves.",
+ "features": [
+  {
+   "id": "F01",
+   "title": "Synthetic feature 01"
+  },
+  {
+   "id": "F02",
+   "title": "Synthetic feature 02"
+  },
+  {
+   "id": "F03",
+   "title": "Synthetic feature 03"
+  },
+  {
+   "id": "F04",
+   "title": "Synthetic feature 04"
+  },
+  {
+   "id": "F05",
+   "title": "Synthetic feature 05"
+  },
+  {
+   "id": "F06",
+   "title": "Synthetic feature 06"
+  },
+  {
+   "id": "F07",
+   "title": "Synthetic feature 07"
+  },
+  {
+   "id": "F08",
+   "title": "Synthetic feature 08"
+  },
+  {
+   "id": "F09",
+   "title": "Synthetic feature 09"
+  },
+  {
+   "id": "F10",
+   "title": "Synthetic feature 10"
+  },
+  {
+   "id": "F11",
+   "title": "Synthetic feature 11"
+  },
+  {
+   "id": "F12",
+   "title": "Synthetic feature 12"
+  },
+  {
+   "id": "F13",
+   "title": "Synthetic feature 13"
+  },
+  {
+   "id": "F14",
+   "title": "Synthetic feature 14"
+  },
+  {
+   "id": "F15",
+   "title": "Synthetic feature 15"
+  },
+  {
+   "id": "F16",
+   "title": "Synthetic feature 16"
+  },
+  {
+   "id": "F18",
+   "title": "Synthetic feature 18"
+  },
+  {
+   "id": "F19",
+   "title": "Synthetic feature 19"
+  },
+  {
+   "id": "F20",
+   "title": "Synthetic feature 20"
+  },
+  {
+   "id": "F21",
+   "title": "Synthetic feature 21"
+  },
+  {
+   "id": "F22",
+   "title": "Synthetic feature 22"
+  },
+  {
+   "id": "F23",
+   "title": "Synthetic feature 23",
+   "folder": "legacy-folder-name"
+  },
+  {
+   "id": "F24",
+   "title": "Synthetic feature 24",
+   "folder": "another-legacy-folder"
+  },
+  {
+   "id": "F25",
+   "title": "Synthetic feature 25"
+  },
+  {
+   "id": "F26",
+   "title": "Synthetic feature 26"
+  },
+  {
+   "id": "F27",
+   "title": "Synthetic feature 27"
+  },
+  {
+   "id": "F28",
+   "title": "Synthetic feature 28"
+  },
+  {
+   "id": "F29",
+   "title": "Synthetic feature 29"
+  },
+  {
+   "id": "F30",
+   "title": "Synthetic feature 30"
+  },
+  {
+   "id": "F31",
+   "title": "Synthetic feature 31"
+  },
+  {
+   "id": "F32",
+   "title": "Synthetic feature 32"
+  },
+  {
+   "id": "F33",
+   "title": "Synthetic feature 33"
+  },
+  {
+   "id": "F34",
+   "title": "Synthetic feature 34"
+  },
+  {
+   "id": "F35",
+   "title": "Synthetic feature 35"
+  },
+  {
+   "id": "F36",
+   "title": "Synthetic feature 36"
+  },
+  {
+   "id": "F37",
+   "title": "Synthetic feature 37"
+  },
+  {
+   "id": "F38",
+   "title": "Synthetic feature 38"
+  }
+ ]
+}
