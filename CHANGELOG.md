@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.21
+
+- F23 Development cycle: opt-in coding loops with protected evidence, independent validation, budgets and recovery.
+- F31 Live-worker liveness: verified process and lineage evidence distinguish live workers, unknown registrations and saved history.
+- F36 Standardized build intake: versioned defaults, seven answer rounds, role recommendations and tracked dispatch receipts.
+- F42 Fast VM test: ready snapshots, agentless install/update checks, smart change scope and parallel local CI.
+- Harden startup with one atomic Control database initialization and fewer synchronous Setup reads; bound startup waits in tests.
+- Desktop CI builds installers without uploading; release publication finds drafts through the paginated releases list.
+
 ## Unreleased (aimed at 0.2.18)
 
 - Finished jobs stay on the dashboard until you have seen them. When a job ends, its model icon in the WORKING cell turns into a green ring with a check (red ring and "!" when it failed) and stays there through reloads, restarts and the 30-minute window. Hover or focus shows a detail card (what the task was, outcome, end time, duration, model, result). Click an icon, or "Clear N" at the row end, to mark it seen; Undo shows for 6 seconds. The chip next to the Active builds title ("3 finished · 1 failed") opens a side panel with the not-seen list, 30 days of seen history with Undo, and "Mark all seen"; an "all seen" button sits next to the chip too. The tab title shows the count. A plan stays in Active builds while it has an unseen finished job.

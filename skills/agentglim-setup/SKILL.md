@@ -66,6 +66,12 @@ Offer once to be the SuperAgent, or just do it if the user asked. Never claim a 
 
 The dashboard's header shows "Dashboard listener not running" with a Copy button when the heartbeat is fresh but the listener is not; the copied prompt is this section.
 
+## Standardized build requests in SuperAgent chat
+
+For a new task, feature or project build requested in SuperAgent chat, read `docs/build-intake.md` and use `<run>/bin/build-intake.mjs`. Keep the chat message ID as the stable request key. Show the seven grouped rounds and recommendations, then record actual owner answers before launch; a Jev prefill or silence does not answer a round. Inherit setup defaults without asking them again. A headless agent must not invent owner answers to an interactive product intake.
+
+Use the tool's pinned configuration and canonical `agent.sh` dispatch. Deliver its complete cards through `chat-write.mjs --build-id <id> --session SuperAgent --entry chat`; do not paraphrase settings or claim native final-reply interception. Recover an existing launch by ID and reconcile uncertain attempts without another worker. Never change running settings. Defaults edits require an owner request, showing the tool's diff first, then applying the matching preview. The ten-launch review never enables recommended mode in v1. These rules cover this chat build path; ordinary helper jobs still use the existing worker launcher below.
+
 ## Workers
 
 AgentGlim ships one worker launcher, `<run>/bin/worker-launch.sh` (linked by setup; the source is `harness/bin/worker-launch.sh`). It needs node and, for dashboard tracking, Python 3 (`python3`, `python` or `py`); without Python workers still run, and the launcher prints `tracking degraded` (doctor's `worker-tracking` check says the same). On Windows use `node <run>/bin/worker-launch.mjs` with the same arguments (or the `.sh` from Git Bash):

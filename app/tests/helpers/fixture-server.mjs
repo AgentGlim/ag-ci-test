@@ -20,7 +20,7 @@ export function fixtureServer(prefix = 'ag-ui-', extraEnv = {}) {
   let child;
   return {
     home, data, write,
-    async start() {
+    async start(readyOptions = {}) {
       child = spawn(process.execPath, ['app/server.mjs', '0'], {
         cwd: path.resolve(import.meta.dirname, '../../..'),
         env: {
@@ -32,14 +32,21 @@ export function fixtureServer(prefix = 'ag-ui-', extraEnv = {}) {
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
-      const port = await waitForServerReady(child);
+      let port;
+      try { port = await waitForServerReady(child, 0, readyOptions); }
+      catch (error) {
+        // Callers may only register this fixture for cleanup after start returns.
+        // A readiness failure must not leave a child holding the browser job open.
+        await this.stop();
+        throw error;
+      }
       // Keep draining output after readiness so a long browser run cannot block on a full pipe.
       child.stdout.resume(); child.stderr.resume();
       return `http://127.0.0.1:${port}`;
     },
     async stop() {
       if (child && child.exitCode === null && child.signalCode === null) {
-        child.kill(); await once(child, 'exit');
+        const exited = once(child, 'exit'); child.kill(); await exited;
       }
     },
     async close() {

@@ -33,17 +33,23 @@ function context(env) {
   return { repo: env.GITHUB_REPOSITORY, tag, sha: env.GITHUB_SHA };
 }
 
+// The tag endpoint only returns published releases. List all authenticated pages so
+// a draft beyond the first page is still found; API failures must never mean "absent".
+function releaseForTag(repo, tag, gh) {
+  const pages = JSON.parse(gh(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`]));
+  assert.ok(Array.isArray(pages) && pages.every(Array.isArray), 'Expected paginated release arrays');
+  const matches = pages.flat().filter(release => release.tag_name === tag);
+  assert.ok(matches.length <= 1, 'Multiple releases have the requested tag');
+  return matches[0];
+}
+
 export function checkDraft(env = process.env, gh = runGh) {
   const { repo, tag, sha } = context(env);
   const encoded = encodeURIComponent(tag);
   const current = JSON.parse(gh(['api', `repos/${repo}/commits/${encoded}`]));
   assert.equal(current.sha, sha, 'The release tag moved before the build');
-  let release;
-  try { release = JSON.parse(gh(['api', `repos/${repo}/releases/tags/${encoded}`])); }
-  catch (error) {
-    if (error.status === 1 && /HTTP 404/.test(String(error.stderr))) return;
-    throw error;
-  }
+  const release = releaseForTag(repo, tag, gh);
+  if (!release) return; // the build action may create the initial draft
   assert.equal(release.tag_name, tag, 'The draft belongs to a different tag');
   assert.equal(release.draft, true, 'Refusing uploads to an already-published release');
 }
@@ -52,9 +58,11 @@ export function publish(env = process.env, gh = runGh) {
   const { repo, tag, sha } = context(env);
   const encoded = encodeURIComponent(tag);
   const current = JSON.parse(gh(['api', `repos/${repo}/commits/${encoded}`]));
-  const release = JSON.parse(gh(['api', `repos/${repo}/releases/tags/${encoded}`]));
+  const release = releaseForTag(repo, tag, gh);
+  assert.ok(release, 'No release found for the verified tag');
   validateRelease({ release, tag, sha, currentSha: current.sha });
-  gh(['release', 'edit', tag, '--repo', repo, '--draft=false']);
+  assert.ok(Number.isSafeInteger(release.id) && release.id > 0, 'Expected a release ID');
+  gh(['api', '--method', 'PATCH', `repos/${repo}/releases/${release.id}`, '--field', 'draft=false']);
   console.log(`Published verified installers for ${tag}.`);
 }
 

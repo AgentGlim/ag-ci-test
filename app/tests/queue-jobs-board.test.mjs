@@ -42,18 +42,8 @@ test('headless-take jobs: NN-slug__stage under its plan with stage + model; obse
     '--req', req, '--prompt', 'see 67-fake-done for context', '--kind', 'queue', '--launcher', 'headless-take.sh'], { env, encoding: 'utf8' }).trim();
   const planJob = reg(s1.pid, path.join(home, 'plans/_run/audit_queue/66-fake-bench__v15-r1-audit.req'), 'claude-fable-5-1', path.join(home, 'plans/66-fake-bench'), path.join(home, 'plans/66-fake-bench/_build/v15-r1/audit'));
   const saJob = reg(s2.pid, path.join(home, 'plans/_run/audit_queue/observatory__reject-x_-abc123.req'), 'claude-sonnet-5-5', path.join(home, 'plans/_observatory'), path.join(home, 'plans/_observatory/_build/reject-x_-abc123'));
-  // This test pins board placement/counts, independent of host PowerShell latency.
-  // Native pending/completed identity evidence is covered by windows-startup.test.mjs.
-  for (const id of [planJob, saJob]) {
-    const record = path.join(env.JOBS_TRACK_DIR, `${id}.json`);
-    const job = JSON.parse(fs.readFileSync(record, 'utf8'));
-    job.pidStart = 777;
-    fs.writeFileSync(record, JSON.stringify(job));
-    const fields = Array(50).fill('0'); fields[0] = 'S'; fields[1] = '1'; fields[19] = '777';
-    write(`proc/${job.pid}/stat`, `${job.pid} (node) ${fields.join(' ')}`);
-  }
   const child = spawn(process.execPath, ['app/server.mjs', '0'], { cwd: path.resolve(APP, '..'), env: {
-    PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, HOME: home, USERPROFILE: home, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_ENV_FILE: path.join(home, 'env'), AGENTGLIM_CONFIG: path.join(home, 'harness.json'), JOBS_TRACK_DIR: env.JOBS_TRACK_DIR, AGENTGLIM_PROJECTS: home, AGENTGLIM_PLANS: path.join(home, 'plans'), AGENTGLIM_PROC: path.join(home, 'proc'), AGENTGLIM_DEV: '1',
+    PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, HOME: home, USERPROFILE: home, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_ENV_FILE: path.join(home, 'env'), AGENTGLIM_CONFIG: path.join(home, 'harness.json'), JOBS_TRACK_DIR: env.JOBS_TRACK_DIR, AGENTGLIM_PROJECTS: home, AGENTGLIM_PLANS: path.join(home, 'plans'), AGENTGLIM_DEV: '1',
   }, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = ''; child.stderr.on('data', (x) => { errors += x; });
   t.after(async () => {

@@ -17,16 +17,8 @@ import { archiveScratch } from './helpers/weekly-scratch.mjs';
 const REPO = path.resolve(import.meta.dirname, '../..');
 const LISTENER = path.join(REPO, 'harness', 'bin', 'auditq-wait.sh');
 const read = (f) => fs.readFileSync(path.join(REPO, f), 'utf8');
-// public-docs/ is published as docs/ in the export, except public-docs/AGENTS.md, which ships as the root AGENTS.md
-// (public.txt: `public-docs/AGENTS.md => AGENTS.md`; the broader public-docs/ => docs/ copy deliberately skips that
-// exact mapping), so a release test reads the first layout that exists: the source file, docs/<name>, then root <name>.
-const readDoc = (f) => {
-  const rel = f.replace(/^public-docs\//, '');
-  const candidates = [f, `docs/${rel}`, rel].map((p) => path.join(REPO, p));
-  const found = candidates.find((p) => fs.existsSync(p));
-  assert.ok(found, `no ${f} in this layout (looked for ${candidates.join(', ')})`);
-  return fs.readFileSync(found, 'utf8');
-};
+// public-docs/ is published as docs/ in the export, so a release test reads whichever exists
+const readDoc = (f) => { const local = path.join(REPO, f); return fs.readFileSync(fs.existsSync(local) ? local : path.join(REPO, f.replace(/^public-docs\//, 'docs/')), 'utf8'); };
 const have = (cmd) => spawnSync(cmd, ['--version'], { encoding: 'utf8' }).status === 0;
 const win = process.platform === 'win32';
 // native Windows has no bash: the app prints the Node twin of the listener there
@@ -297,10 +289,8 @@ test('npm run update pulls main (fast-forward only) and re-links the run folder 
 
 test('one update method in the docs, no placeholder clone URL, no owner notes in the public AGENTS.md', () => {
   const install = readDoc('public-docs/install.md'), readme = read('README.md'), setup = read('SETUP.md');
-  // The public export ships public-docs/AGENTS.md as AGENTS.md (public.txt line: `public-docs/AGENTS.md => AGENTS.md`,
-  // applied by dev/release.sh). Read the shipped copy, not the repo-root one: a worktree has no gitignored public.txt,
-  // and the owner's root AGENTS.md keeps `## Applied learning` notes that never ship.
-  const agents = readDoc('public-docs/AGENTS.md');
+  // Private checkout keeps owner learnings in its own AGENTS.md; public.txt exports this clean template.
+  const agents = fs.existsSync(path.join(REPO, 'public.txt')) ? readDoc('public-docs/AGENTS.md') : read('AGENTS.md');
   assert.match(install, /git clone https:\/\/github\.com\/AgentGlim\/agentglim\.git/);
   assert.doesNotMatch(install, /<you>/, 'no placeholder clone URL');
   assert.match(install, /Linux, macOS and Windows/, 'the platforms it actually runs on');

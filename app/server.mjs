@@ -24,10 +24,12 @@ import './env.mjs'; // first: API keys and settings from <repo>/.env (process en
 import { ENV_FILE, keyStatuses } from './env.mjs'; // Setup page shows where keys go
 import fs from 'node:fs';
 import os from 'node:os';
-import { listProcesses, readMemoryInfo, readStat, onProcessStatChange } from './proc.mjs';
+import { listProcesses, readMemoryInfo, readStat } from './proc.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
+import { CycleService } from './development-cycle/service.mjs';
+import { cycleRoutes } from './development-cycle/http.mjs';
 import { liveStatus } from './refresh-status.mjs';
 import { roleModelsView } from './roles.mjs';
 import { routingView, saveFeedback } from './routing.mjs'; // Jev routing dashboard
@@ -237,7 +239,7 @@ const OPENCODE_DB = `${process.env.HOME}/.local/share/opencode/opencode.db`;
 let PORT = Number(process.argv[2] ?? process.env.PORT ?? 18990);
 let pagesPort = PORT === 0 ? 0 : PORT + 1;
 // New-release check: one cached GitHub GET per 12 h at most. "dev" builds and opt-outs never fetch.
-const UPDATE_ENABLED = updateCheckEnabled({ integrations });
+const UPDATE_ENABLED = !DEV && updateCheckEnabled({ integrations });
 const CURRENT_VERSION = currentVersion();
 let updateState = null, updateBusy = null;
 function refreshUpdate() {
@@ -322,7 +324,8 @@ const AGY_OR = [[/^gemini-3\.8-flash/, 'google/gemini-3.8-flash'], [/^claude-opu
 const AGY_FILE = `${DATA}/agy-prices.json`; let AGY_P = {}; try { AGY_P = JSON.parse(readText(AGY_FILE)); } catch {}
 const agyPrice = (model) => { const id = AGY_OR.find(([re]) => re.test(model || ''))?.[1]; const c = id && AGY_P.models?.[id]; return c ? { ...c, id } : null; };
 function agyPriceRefresh() {
-  fetch('https://openrouter.ai/api/v1/models').then((r) => r.json()).then((j) => { const models = {}, M = 1e6;
+  if (DEV) return; // fixture servers must not start a live DNS/HTTP request
+  fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(25_000) }).then((r) => r.json()).then((j) => { const models = {}, M = 1e6;
     for (const [, id] of AGY_OR) { const x = (j.data || []).find((m) => m.id === id)?.pricing; if (x) models[id] = { input: +x.prompt * M, cached: +(x.input_cache_read ?? x.prompt) * M, write: +(x.input_cache_write ?? x.prompt) * M, output: +x.completion * M }; }
     if (Object.keys(models).length) { AGY_P = { at: new Date().toISOString(), source: 'https://openrouter.ai/api/v1/models', models }; fs.writeFileSync(AGY_FILE, JSON.stringify(AGY_P, null, 2)); }
   }).catch((e) => console.error('agy price refresh failed', e.message));
@@ -1967,19 +1970,7 @@ function view(base, f) {
 
 // ---------- http ----------
 let base = scan();
-// Native identity evidence arrives after startup. Rebuild one shared snapshot so
-// F31's card and row counts agree, without waiting for the next minute-long scan.
-let identityRefresh;
-onProcessStatChange(() => {
-  if (identityRefresh) return;
-  identityRefresh = setTimeout(() => {
-    identityRefresh = null;
-    tjCache.at = 0;
-    try { base = scan(); if (!DEV) procGuard.scan(); } catch (e) { console.error('identity scan failed', e); }
-  }, 100);
-  identityRefresh.unref();
-});
-agyPriceRefresh(); setInterval(agyPriceRefresh, 24 * 3600e3); // Antigravity live prices, daily
+if (!DEV) setInterval(agyPriceRefresh, 24 * 3600e3); // Antigravity live prices, daily
 // CPU fix 2026-11-13: 30 s while a dashboard is open (pushes stay every 15 s), 60 s when nobody watches
 let lastScan = Date.now();
 setInterval(() => { if (Date.now() - lastScan < (clients.size ? 28000 : 58000)) return; lastScan = Date.now(); try { base = scan(); } catch (e) { console.error('scan failed', e); } }, 15000); // 15 s (was 5 s): desktop load
@@ -2030,9 +2021,16 @@ let control = null;
 // family added later cannot forget it (the Skill Editor routes had none). Loopback names on this port, plus a
 // tailnet host the owner configured (control.json remote.host) or a proxy in AGENTGLIM_ALLOWED_HOSTS.
 const guardHost = makeHostGuard({ port: () => PORT, extraNames: () => [...envExtraHosts(), ...hostAliases(DATA), ...fileExtraHosts(DATA)()] });
+let cycleRoute;
 const dashboard = http.createServer(async (req, res) => {
   if (!guardHost(req, res)) return;
   const route = req.url.split('?')[0];
+  // Settings/read model only. Trusted SuperAgent workers install their own gated runner ports.
+  if (route === '/development-cycles' || route.startsWith('/development-cycles.') || route.startsWith('/api/development-cycles')) {
+    try { cycleRoute ||= cycleRoutes(new CycleService({ dataRoot: DATA })); if (!await cycleRoute(req, res, route)) { res.writeHead(404); res.end('not found'); } }
+    catch (e) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
+    return;
+  }
   if (route === '/api/prefs') return prefsRoute(req, res);
   if (route === '/theme.js' || route === '/theme.css') {
     res.writeHead(200, { 'content-type': route.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'cache-control': 'no-cache' });
@@ -2544,16 +2542,19 @@ const pagesReady = new Promise(resolve => {
 dashboard.listen(PORT, '127.0.0.1', async () => {
   PORT = dashboard.address().port;
   await pagesReady;
-  startPortable();
-  try { startInboxResend({ dev: DEV }); } catch (e) { console.error('inbox resend start failed', e.message); } // SuperAgent chat resend on the shared scheduler
-  if (UPDATE_ENABLED) refreshUpdate(); // background; /api/version answers from cache meanwhile
   // Mount control after binding so its origin checks and proxy use the actual port.
   await import('./control/control.mjs').then((m) => {
     control = m.mountControl({ snapshot: () => view(base, parseFilter('/api/snapshot')), approvals, markDone, modeRequest, dataDir: DATA, plansDir: PLANS, runDir: RUN, desktopPort: PORT, ...(DEV ? { pushPoll: false } : {}) });
     if (!DEV) control.listenRemote(); // no-op unless control.json remote.enabled; the dev copy never opens the remote listener
   }).catch((e) => console.error('control module not loaded', e));
+  // Load and initialize Control before starting background network pollers: DNS
+  // lookups and cold module reads otherwise compete for libuv's worker pool.
+  startPortable();
+  try { startInboxResend({ dev: DEV }); } catch (e) { console.error('inbox resend start failed', e.message); }
   if (!DEV) { try { const port = dashboard.address()?.port || PORT; fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(`${DATA}/server-url.json`, JSON.stringify({ url: `http://127.0.0.1:${port}`, port, pid: process.pid, at: new Date().toISOString() }) + '\n'); } catch {} } // status-write.mjs and first-run doctor find a non-default port here
   console.log(`AgentGlim on http://localhost:${PORT} (127.0.0.1)${DEV ? `, dev copy, writes ${DEV_WRITES ? 'ON' : 'off'}` : ''}`);
+  agyPriceRefresh();
+  if (UPDATE_ENABLED) refreshUpdate(); // background; /api/version answers from cache meanwhile
 });
 
 // plans with no priority get a Jev tier (Opus review when unsure), at start and every 30 min

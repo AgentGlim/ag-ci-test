@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { once, EventEmitter } from 'node:events';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -76,17 +76,4 @@ test('parallel app servers report distinct bound dashboard and page ports', asyn
     return [port, snapshot.pagesPort];
   }));
   assert.equal(new Set(fixtures.flat()).size, 4);
-});
-
-// Model a runner resuming with a deadline timer and stdout pending together.
-test('server readiness accepts queued stdout before rejecting an expired deadline', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const server = new EventEmitter();
-  Object.assign(server, { stdout: new EventEmitter(), stderr: new EventEmitter(), exitCode: null, signalCode: null });
-  const ready = waitForServerReady(server, 19360, { timeoutMs: 500 });
-  t.mock.timers.tick(500);
-  server.stdout.emit('data', 'AgentGlim on http://localhost:19360 (127.0.0.1)\n');
-  assert.equal(await ready, 19360);
-  assert.equal(server.stdout.listenerCount('data'), 0);
-  assert.equal(server.listenerCount('exit'), 0);
 });

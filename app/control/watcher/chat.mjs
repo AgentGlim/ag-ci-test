@@ -11,6 +11,9 @@ export const MAX_CHAT = 8000;
 
 export function makeChat({ dataDir, runDir, now = () => Date.now() }) {
   const inbox = path.join(runDir, 'chat_inbox');
+  // F36: one durable milestone request, rendered in the SuperAgent thread without replaying messages.
+  const intakeDir = path.join(path.dirname(dataDir), 'build-intake');
+  const reviewF = path.join(intakeDir, 'review.json');
   const outF = path.join(dataDir, 'watcher-out.ndjson'), inF = path.join(dataDir, 'watcher-in.ndjson');
   function post(msg) {
     fs.mkdirSync(inbox, { recursive: true });
@@ -35,8 +38,14 @@ export function makeChat({ dataDir, runDir, now = () => Date.now() }) {
     const answeredQ = new Set(out.filter((m) => m.replyTo).map((m) => String(m.replyTo)));
     const ins = readLines(inF).map((m) => ({ kind: 'in', at: m.at, ms: Date.parse(m.at) || 0, text: m.reply || '', to: m.to ?? null,
       ask: m.ask ? { question: m.ask, options: Array.isArray(m.options) ? m.options.slice(0, 8) : [], qid: m.qid || null, answered: m.qid ? answeredQ.has(String(m.qid)) : false } : null }));
+    let review; try { review = JSON.parse(fs.readFileSync(reviewF, 'utf8')); } catch {}
+    if (review?.schemaVersion === 1 && review.id === 'ten-launch-review' && !ins.some(m => m.ask?.qid === review.id)) {
+      const decided = fs.existsSync(path.join(intakeDir, 'review-decision.json'));
+      ins.push({ kind: 'in', at: review.at, ms: Date.parse(review.at) || 0, text: `${review.question} Future autofill: ${(review.groups || []).join(', ')}. Ask mode remains required in v1.`, to: null,
+        ask: { question: review.question, options: ['Review future unlock', 'Keep ask mode'], qid: review.id, answered: decided || answeredQ.has(review.id) } });
+    }
     return [...out, ...ins].sort((a, b) => (Date.parse(a.at) || a.ms) - (Date.parse(b.at) || b.ms)).slice(-limit);
   }
-  const mtime = () => { let t = 0; for (const f of [outF, inF]) { try { t = Math.max(t, fs.statSync(f).mtimeMs); } catch {} } try { t = Math.max(t, fs.statSync(inbox).mtimeMs); } catch {} return t; };
+  const mtime = () => { let t = 0; for (const f of [outF, inF, reviewF, path.join(intakeDir, 'review-decision.json')]) { try { t = Math.max(t, fs.statSync(f).mtimeMs); } catch {} } try { t = Math.max(t, fs.statSync(inbox).mtimeMs); } catch {} return t; };
   return { post, thread, mtime, inbox, outF, inF };
 }

@@ -8,7 +8,9 @@ export const TYPE_LABELS = Object.freeze({
   blocked: 'Something is blocked', driver_down: 'The driver is down', usage_limit: 'A usage limit was reached',
 });
 
-const SCHEMA = `
+import { applySchema } from '../schema.mjs';
+
+export const PUSH_SCHEMA = `
 create table if not exists push_subs (id text primary key, device_id text, endpoint text, p256dh text, auth text, created integer, last_ok integer, fails integer default 0);
 create table if not exists push_prefs (scope text, type text, enabled integer, updated integer, primary key (scope, type));
 create table if not exists push_log (id integer primary key autoincrement, ts integer, device_id text, sub_id text, type text, status integer, test integer default 0);
@@ -16,7 +18,7 @@ create table if not exists push_state (k text primary key, v text, updated integ
 `;
 
 export function makePushStore(db, { now = () => Date.now(), configTypes = () => ({}) } = {}) {
-  db.exec(SCHEMA);
+  applySchema(db, PUSH_SCHEMA);
   const q = (sql) => db.prepare(sql);
   function defaults() {
     const c = configTypes() || {};

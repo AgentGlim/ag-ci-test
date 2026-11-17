@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // chat-write.mjs: the watcher's reply to the Control page's Watcher thread. Packaged in agentglim/harness/bin;
 // the harness keeps a link at <plans>/_run/bin/chat-write.mjs.
+//   --build-id ID --session SuperAgent --entry chat replaces launch prose with complete F36 cards.
 //   node _run/bin/chat-write.mjs --reply "TEXT" [--to MS ...] [--ask "QUESTION" --option A --option B [--qid ID]]
 // Appends one JSON line {at, reply, to?, ask?, options?, qid?} to <data>/control/watcher-in.ndjson and renames
 // each answered <run>/chat_inbox/<MS>.json to <MS>.json.answered (with answeredAt). A structured ask renders as buttons;
@@ -10,6 +11,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createBuildIntake } from '../../app/build-intake/index.mjs';
+import { makeBuildAdapters } from '../../app/build-intake/adapters.mjs';
 import { harnessConfig } from '../config.mjs';
 
 const H = harnessConfig();
@@ -25,8 +28,17 @@ for (let i = 0; i < a.length; i++) {
   i++;
   if (k === 'to' || k === 'option') opt[k].push(v); else opt[k] = v;
 }
+let canonicalBuild = false;
+if (opt['build-id']) {
+  if (opt.session !== 'SuperAgent' || opt.entry !== 'chat') { console.error('--build-id requires --session SuperAgent --entry chat'); process.exit(2); }
+  try {
+    const api = createBuildIntake(makeBuildAdapters());
+    opt.reply = api.reply(opt['build-id'], { session: opt.session, entry: opt.entry }, opt.reply);
+    canonicalBuild = true;
+  } catch (e) { console.error(e.message); process.exit(2); }
+}
 if (typeof opt.reply !== 'string' || !opt.reply.trim()) { console.error('--reply TEXT is required'); process.exit(2); }
-if (opt.reply.length > 8000) { console.error('--reply is over 8000 chars'); process.exit(2); }
+if (!canonicalBuild && opt.reply.length > 8000) { console.error('--reply is over 8000 chars'); process.exit(2); }
 if (opt.to.some((m) => !/^\d{10,16}$/.test(m))) { console.error('--to takes the <ms> of an inbox file'); process.exit(2); }
 if (opt.option.length && !opt.ask) { console.error('--option needs --ask'); process.exit(2); }
 if (opt.ask && opt.option.length < 2) { console.error('--ask needs at least two --option'); process.exit(2); }
@@ -42,6 +54,8 @@ for (const ms of opt.to) {
   if (!fs.existsSync(f)) { console.error(`note: ${ms}.json is not pending (already answered or unknown)`); continue; }
   let j = {}; try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
   fs.writeFileSync(`${f}.answered`, JSON.stringify({ ...j, answeredAt: now }) + '\n');
-  fs.unlinkSync(f); renamed.push(ms);
+  const archive = path.join(INBOX, '_archive', `${now.slice(0, 10).replaceAll('-', '')}-answered`);
+  fs.mkdirSync(archive, { recursive: true });
+  fs.renameSync(f, path.join(archive, `${ms}.json`)); renamed.push(ms);
 }
 console.log(`chat reply written${rec.qid ? ` (ask ${rec.qid})` : ''}${renamed.length ? `; answered ${renamed.join(', ')}` : ''}`);

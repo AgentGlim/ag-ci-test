@@ -683,6 +683,7 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
       <div id="updateNotice"></div>
       <div class="meta" id="updated">connecting...</div>
       <a class="btn skills-btn" id="skillsLink" href="/skills" target="_blank" rel="noopener" data-tip="Read and edit your installed skills">Skill Editor</a>
+      <a class="btn" href="/development-cycles" target="_blank" rel="noopener">Development cycles</a>
       <details class="pgmenu" id="pgMenu"><summary class="btn" aria-label="Open pages menu">Pages <span aria-hidden="true">&#9662;</span></summary>
       <nav class="pgm-list" role="menu">
         <a class="pgm-i" role="menuitem" href="/goals" target="_blank" rel="noopener" data-tip="Open the Goals app: alignment, asks by goal, the weekly review, rules and print to PDF">Goals</a>
@@ -2696,7 +2697,7 @@ function apExport(only) {
     const i = byId[id]; const what = i ? `[${apShort(i.project)}] ${AP_KIND[i.kind] || i.kind}${i.key && !['ask', 'verify', 'audit'].includes(i.key) ? ' ' + i.key : ''}: ${i.title}` : id;
     return `- ${what}\n  choice: ${p.c || '(none)'}${p.n ? `\n  note: ${p.n}` : ''}\n  id: ${id}`;
   });
-  return `# Approvals: The owner's choices\n\n${rows.join('\n') || '(no choices picked)'}\n`;
+  return `# Approvals: The owner's choices (${new Date().toLocaleString()})\n\n${rows.join('\n') || '(no choices picked)'}\n`;
 }
 $('approvals').addEventListener('click', async (e) => {
   if (e.target.closest('h2.tg')) { apMin = !apMin; apSave(); return apRender(); }

@@ -29,21 +29,15 @@ write('data/skill-groups.json', JSON.stringify({
   suggestions: [{ id: 'new-xss', categoryId: 'xss-cat', label: PAYLOAD, skills: ['fixture-skill'], reason: 'fixture', source: 'model', at: '2026-11-13T00:00:00.000Z' }],
 }, null, 2));
 
-const out = path.join(import.meta.dirname, 'out', 'skills-editor-xss');
-fs.mkdirSync(out, { recursive: true });
-let browser, ctx, page, passed = false;
-const diagnostics = [];
+let browser;
 try {
   const base = await fixture.start();
   browser = await chromium.launch(chrome ? { executablePath: chrome } : {});
-  ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   await ctx.addInitScript(() => { try { localStorage.setItem('agTourSeen', '1'); } catch {} });
-  await ctx.tracing.start({ screenshots: true, snapshots: true, sources: true });
-  page = await ctx.newPage();
-  page.on('requestfailed', r => diagnostics.push({ url: r.url(), error: r.failure() }));
-  page.on('console', m => { if (m.type() === 'error') diagnostics.push({ console: m.text() }); });
+  const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', (e) => { errors.push(e.message); diagnostics.push({ pageerror: e.message }); });
+  page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(base + '/skills', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#gbarList .gchip', { timeout: 20000 });
 
@@ -79,16 +73,8 @@ try {
   assert.equal(focus.imgs, 0, 'the focus view category line builds no element from the label');
   assert.ok(focus.text.includes(PAYLOAD), 'the focus view category line keeps the label as literal text');
   assert.deepEqual(errors, [], 'no page errors');
-  passed = true;
   console.log('PASS: an accepted model-supplied category label renders as text in the atlas and the focus view; no script runs');
 } finally {
-  if (ctx) {
-    if (!passed) {
-      await page?.screenshot({ path: path.join(out, 'failure.png') }).catch(() => {});
-      fs.writeFileSync(path.join(out, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
-      await ctx.tracing.stop({ path: path.join(out, 'trace.zip') }).catch(() => {});
-    } else await ctx.tracing.stop();
-  }
   if (browser) await browser.close();
   await fixture.close();
 }

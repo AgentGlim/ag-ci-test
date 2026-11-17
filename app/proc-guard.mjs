@@ -74,12 +74,12 @@ export function evaluateProcesses(processes,{jobs=[],samples={},allowed={},now=D
     return [{pid:p.pid,start:p.start,command:safeCommand(p.argv,secrets),startedBy:agent ? `${agent.comm} (pid ${agent.pid})` : 'AI agent tool environment',ageMs:p.ageMs,rss:p.rss,growth,reason:growth>500*1024**2 ? 'Grew over 500 MB' : 'Over 60 min without a tracked job',at:now}];
   });
 }
-export function createProcGuard({platform=process.platform, windowsQuery=queryWindowsProcess, windowsScanQuery=windowsQuery, registrations=()=>registeredWindowsProcesses(data), windowsStop=stopWindowsProcess, root=procRoot(),data=DATA,now=Date.now,signal=(pid,sig)=>process.kill(pid,sig),jobs=()=>readTracked(path.join(data,'tracked-jobs')),config=loadSetup,dev=process.env.AGENTGLIM_DEV==='1',ticks,uid=process.getuid?.(),delay=fn=>setTimeout(fn,10000).unref()}={}) {
+export function createProcGuard({platform=process.platform, windowsQuery=queryWindowsProcess, registrations=()=>registeredWindowsProcesses(data), windowsStop=stopWindowsProcess, root=procRoot(),data=DATA,now=Date.now,signal=(pid,sig)=>process.kill(pid,sig),jobs=()=>readTracked(path.join(data,'tracked-jobs')),config=loadSetup,dev=process.env.AGENTGLIM_DEV==='1',ticks,uid=process.getuid?.(),delay=fn=>setTimeout(fn,10000).unref()}={}) {
   const file=path.join(data,'proc-guard.json');let state=readJson(file) || {samples:{},allowed:{},flagged:[]};
   if(platform==='linux' && !ticks)try{ticks=+execFileSync('getconf',['CLK_TCK'],{encoding:'utf8',timeout:1000});}catch{ticks=100;}
-  const windowsRead=(record,query=windowsQuery)=>{
+  const windowsRead=record=>{
     try {
-    const p=query(record.pid);
+    const p=windowsQuery(record.pid);
     if(!sameWindowsIdentity(record,p))return null;
     const born=Number((BigInt(p.start)-116444736000000000n)/10000n);
     return {...p,argv:[p.executable],ageMs:Math.max(0,now()-born),rss:Number(p.rss)||0,record};
@@ -92,38 +92,26 @@ export function createProcGuard({platform=process.platform, windowsQuery=queryWi
     }
     return readProcess(pid,{root,now:now(),ticks,uid});
   };
-  const processes=(query=windowsScanQuery,regs=null)=>platform==='win32' ? (regs || registrations()).map(r=>windowsRead(r,query)).filter(Boolean) : (root ? fs.readdirSync(root).filter(n=>/^\d+$/.test(n)).map(read).filter(Boolean) : []);
+  const processes=()=>platform==='win32' ? registrations().map(windowsRead).filter(Boolean) : (root ? fs.readdirSync(root).filter(n=>/^\d+$/.test(n)).map(read).filter(Boolean) : []);
   const evaluate=all=>{
     const opts={jobs:jobs(),samples:state.samples,allowed:state.allowed,now:now(),secrets:secretValues()};
     if(platform!=='win32')return evaluateProcesses(all,opts);
     const tracked=new Set(opts.jobs.filter(j=>!j.status || j.status==='running').flatMap(j=>[+j.pid,+j.childPid]));
     return all.flatMap(p=>{
       if(p.pid===process.pid || tracked.has(p.pid) || state.allowed[p.pid]===p.start)return [];
-      const prev=state.samples[p.pid],growth=sameSample(prev,p) ? p.rss-prev.minRss : 0;
+      const prev=state.samples[p.pid],growth=prev?.start===p.start ? p.rss-prev.minRss : 0;
       if(p.ageMs<=3600e3 && growth<=500*1024**2)return [];
       return [{pid:p.pid,start:p.start,command:safeCommand(p.argv,opts.secrets),startedBy:'AgentGlim registered launch',ageMs:p.ageMs,rss:p.rss,growth,reason:growth>500*1024**2 ? 'Grew over 500 MB' : 'Over 60 min without a tracked job',at:now()}];
     });
-  };
-  // A sample is one process generation's minimum RSS. Windows background scans can see
-  // pending/unavailable evidence, so a still-registered generation keeps its baseline
-  // until fresh evidence returns; a changed registration or confirmed identity resets it.
-  // A baseline alone never flags or authorizes anything: Stop/Allow re-read the process.
-  // Executable paths compare case-insensitively, exactly as sameWindowsIdentity does.
-  const sameSample=(old,p)=>!!old && old.start===p.start && (old.executable==null || String(old.executable).toLowerCase()===String(p.executable).toLowerCase());
-  const nextSamples=(list,regs)=>{
-    const next={},sample=(p,old)=>({start:p.start,...(p.executable ? {executable:p.executable} : {}),minRss:sameSample(old,p) ? Math.min(old.minRss,p.rss) : p.rss});
-    if(!regs){for(const p of list)next[p.pid]=sample(p,state.samples[p.pid]);return next;}
-    const fresh=new Map(list.map(p=>[p.pid,p]));
-    for(const r of regs){const old=state.samples[r.pid],p=fresh.get(r.pid);if(p)next[r.pid]=sample(p,old);else if(sameSample(old,r))next[r.pid]=old;}
-    return next;
   };
   const secretValues=()=>Object.entries(process.env).filter(([k])=>/(?:KEY|TOKEN|SECRET|PASSWORD)/i.test(k)).map(([,v])=>v);
   function scan() {
     if(dev)return {...state,disabled:'dev copy'};
     if(platform!=='win32' && (!root || !fs.existsSync(root)))return {flagged:[],unsupported:true};
-    const regs=platform==='win32' ? registrations() : null,list=processes(windowsScanQuery,regs);
+    const list=processes();
     state.flagged=evaluate(list);
-    state.samples=nextSamples(list,regs);state.at=now();atomicJson(file,state);
+    const next={};for(const p of list){const old=state.samples[p.pid];next[p.pid]={start:p.start,minRss:old?.start===p.start ? Math.min(old.minRss,p.rss):p.rss};}
+    state.samples=next;state.at=now();atomicJson(file,state);
     const hours=config().guard?.autoStopHours || 0;
     if(hours>0)for(const item of state.flagged)if(item.ageMs>hours*3600e3)stop(item.pid,item.start,'auto').catch(()=>{});
     return view();
@@ -131,8 +119,7 @@ export function createProcGuard({platform=process.platform, windowsQuery=queryWi
   const log=record=>{fs.mkdirSync(data,{recursive:true});fs.appendFileSync(path.join(data,'proc-guard.ndjson'),JSON.stringify({at:now(),...record})+'\n',{mode:0o600});};
   function eligible(pid,start) {
     const p=read(pid);if(!p || p.start!==start)return null;
-    // Actions must revalidate fresh identity even when background scans use a cache.
-    let all=[];try{all=processes(windowsQuery);}catch{}
+    let all=[];try{all=processes();}catch{}
     return evaluate(all).find(x=>x.pid===pid && x.start===start);
   }
   const windowsStopRegistered=(pid,start,force)=>{

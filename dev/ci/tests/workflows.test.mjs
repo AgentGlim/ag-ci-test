@@ -104,3 +104,22 @@ test('private export allowlist carries the new CI source files', () => {
   assert.ok(entries.includes('.github/workflows/desktop-cache.yml'));
   assert.ok(entries.includes('dev/ci/'));
 });
+
+test('branch and PR CI bundle every desktop platform without a release token or uploads', () => {
+  const build = ci.jobs['desktop-build'];
+  assert.equal(build.needs, 'privacy');
+  assert.equal(build.permissions.contents, 'read');
+  assert.deepEqual(build.strategy.matrix, desktop.jobs.build.strategy.matrix);
+  const tauri = action(build, 'tauri-apps/tauri-action@');
+  const release = action(desktop.jobs.build, 'tauri-apps/tauri-action@');
+  assert.equal(tauri.with.projectPath, release.with.projectPath);
+  assert.equal(tauri.with.tauriScript, release.with.tauriScript);
+  assert.equal(tauri.with.args, release.with.args);
+  assert.equal(tauri.with.uploadWorkflowArtifacts, false);
+  for (const key of ['releaseId', 'tagName', 'releaseName', 'releaseDraft']) assert.equal(tauri.with[key], undefined);
+  assert.doesNotMatch(JSON.stringify(build), /GITHUB_TOKEN|GH_TOKEN|publish-release|contents.*write/);
+  assert.deepEqual(action(build, 'Swatinem/rust-cache@').with, action(desktop.jobs.build, 'Swatinem/rust-cache@').with);
+  const smoke = build.steps.find(s => s.run?.includes('node desktop/smoke-test.mjs'));
+  assert.equal(smoke.if, "runner.os == 'Linux'");
+  assert.ok(build.steps.indexOf(smoke) > build.steps.indexOf(tauri));
+});

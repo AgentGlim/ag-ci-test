@@ -5,14 +5,9 @@ export function waitForServerReady(child, port = 0, { timeoutMs = 60_000 } = {})
     let output = '';
     let errors = '';
     let pending = '';
-    let settled = false;
-    let deadlineTurn;
     const readyLine = /^AgentGlim on http:\/\/localhost:(\d+) \(127\.0\.0\.1\)(?:,.*)?$/;
     const finish = (error, boundPort) => {
-      if (settled) return;
-      settled = true;
       clearTimeout(timer);
-      clearImmediate(deadlineTurn);
       child.stdout.off('data', onOutput);
       child.stderr.off('data', onErrorOutput);
       child.off('error', onError);
@@ -34,11 +29,7 @@ export function waitForServerReady(child, port = 0, { timeoutMs = 60_000 } = {})
     const onErrorOutput = (chunk) => { errors = (errors + chunk).slice(-8192); };
     const onError = (error) => finish(`Server failed to spawn: ${error.message}`);
     const onExit = (code, signal) => finish(`Server exited before ready (code ${code}, signal ${signal})`);
-    // A loaded runner may resume with both the deadline and stdout already queued.
-    // Give pending I/O one turn to deliver the listening signal; keep the same budget.
-    const timer = setTimeout(() => {
-      deadlineTurn = setImmediate(() => finish(`Server did not become ready within ${timeoutMs}ms`));
-    }, timeoutMs);
+    const timer = setTimeout(() => finish(`Server did not become ready within ${timeoutMs}ms`), timeoutMs);
     child.stdout.on('data', onOutput);
     child.stderr.on('data', onErrorOutput);
     child.once('error', onError);

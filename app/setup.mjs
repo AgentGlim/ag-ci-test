@@ -7,6 +7,7 @@
 //   setupView(cfg)  the small slice the dashboard needs: enabled harnesses, limit ids, hidden providers, custom cards
 import fs from 'node:fs';
 import path from 'node:path';
+import { createBuildIntake } from './build-intake/index.mjs';
 import { HOME, DATA, PLANS, RUN, expandHome } from './paths.mjs';
 import { integrations } from './integrations.mjs';
 import { key, keySource, keyEntries, keyStatuses } from './env.mjs';
@@ -80,18 +81,12 @@ function budgetLimits() {
   return readJson(`${run}/budget.json`)?.limits || [];
 }
 
-export function detect() {
+function detectDefaults() {
   const harnesses = HARNESSES.map((h) => {
     const bin = onPath(h.bin);
     const authFile = h.auth.map(exp).find(has);
     const authEnv = h.authEnv.find((n) => keySource(n));
     return { id: h.id, name: h.name, url: h.url, bin, auth: authFile ? tilde(authFile) : authEnv ? `${authEnv} (${keySource(authEnv)})` : null, found: !!(bin || authFile) };
-  });
-  const keys = FREE_APIS.map((a) => {
-    const src = (n) => keySource(n) || keyEntries(n)[0]?.source;
-    const parts = a.env.map((n) => ({ name: n, source: src(n) || [n, ...a.alt].map((x) => src(x) && `${src(x)} as ${x}`).find(Boolean) || null }));
-    if (a.env.length === 1 && !parts[0].source) { const alt = a.alt.find(src); if (alt) parts[0].source = `${src(alt)} as ${alt}`; }
-    return { id: a.id, found: parts.every((p) => p.source), parts };
   });
   const lim = budgetLimits();
   const goKeys = lim.filter((l) => l.provider === 'opencode-go').length || keyEntries('OPENCODE_API_KEY', ['OPENCODE_API_KEY_DATA','OPENCODE_API_KEY_INFO']).length;
@@ -100,12 +95,26 @@ export function detect() {
     ollama: { bin: onPath('ollama'), endpoint: 'http://127.0.0.1:11434' },
   };
   return {
-    harnesses, keys, keyFamilies: providerStatuses(), goKeys, budgetIds: lim.map((l) => l.id),
-    jev: jevStatus(),
-    eleven: !!keySource('ELEVENLABS_API_KEY'),
+    harnesses, goKeys, budgetIds: lim.map((l) => l.id),
     plans: { path: tilde(PLANS), found: has(PLANS) },
     notify: { bin: onPath('agent-notify') },
     local,
+  };
+}
+
+// Configuration readers run many times per snapshot. Only the Setup inventory
+// needs every API-key family and routing detail; rediscovering those for defaults
+// repeats hundreds of synchronous file probes on the first Windows request.
+export function detect() {
+  const keys = FREE_APIS.map((a) => {
+    const src = (n) => keySource(n) || keyEntries(n)[0]?.source;
+    const parts = a.env.map((n) => ({ name: n, source: src(n) || [n, ...a.alt].map((x) => src(x) && `${src(x)} as ${x}`).find(Boolean) || null }));
+    if (a.env.length === 1 && !parts[0].source) { const alt = a.alt.find(src); if (alt) parts[0].source = `${src(alt)} as ${alt}`; }
+    return { id: a.id, found: parts.every((p) => p.source), parts };
+  });
+  return {
+    ...detectDefaults(), keys, keyFamilies: providerStatuses(),
+    jev: jevStatus(), eleven: !!keySource('ELEVENLABS_API_KEY'),
     custom: { leads: !!integrations.leadsPath && has(integrations.leadsPath), emailseq: !!integrations.emailSequencePath && has(integrations.emailSequencePath) },
   };
 }
@@ -140,7 +149,7 @@ export function setupFilled(saved = readJson(SETUP_FILE), data = DATA) {
   if (isObj(saved) && saved.setupComplete === false) return false;
   return (!!isObj(saved) && saved.setupComplete === true) || has(path.join(data, 'setup-complete')) || legacyComplete(saved);
 }
-export function loadSetup(d = detect()) {
+export function loadSetup(d = detectDefaults()) {
   const saved = readJson(SETUP_FILE);
   const cfg = merge(defaults(d), isObj(saved) ? saved : {});
   for (const id of ['claude','codex','go']) { cfg.subs[id].entries = normalizeEntries(id, cfg.subs[id]); cfg.subs[id].keys = cfg.subs[id].entries.length; }
@@ -201,6 +210,8 @@ export function mergeSaved(saved, input) {
   return out;
 }
 export function saveSetup(input, { complete = true } = {}) {
+  // Recommendations initialize once; later setup saves never edit pinned build defaults.
+  createBuildIntake({ dataDir: DATA, runDir: RUN }).initializeDefaults();
   const out = mergeSaved(readJson(SETUP_FILE), input);
   if (!complete) out.setupComplete = false;
   fs.mkdirSync(path.dirname(SETUP_FILE), { recursive: true });

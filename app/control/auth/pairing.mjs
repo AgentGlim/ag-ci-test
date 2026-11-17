@@ -4,6 +4,7 @@
 // passkeys, push subscriptions, unlock sessions and challenges.
 import crypto from 'node:crypto';
 import { sha256, b64u } from './unlock.mjs';
+import { applySchema } from '../schema.mjs';
 
 export const PAIR_TTL_MS = 5 * 60e3;
 export const REGISTER_WINDOW_MS = 10 * 60e3; // a new device may add its first passkey or PIN without an unlock
@@ -27,7 +28,7 @@ export function cleanName(s) {
 }
 
 export function makePairing(db, { now = () => Date.now() } = {}) {
-  db.exec(AUTH_SCHEMA);
+  applySchema(db, AUTH_SCHEMA);
   const q = (s) => db.prepare(s);
   function mint(listener) {
     const t = now();

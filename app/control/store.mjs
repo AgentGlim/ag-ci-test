@@ -3,6 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { AUTH_SCHEMA } from './auth/pairing.mjs';
+import { PUSH_SCHEMA } from './push/store.mjs';
+import { applySchema } from './schema.mjs';
 
 const SCHEMA = `
 create table if not exists confirms (token text primary key, action text, target text, pids_json text, created integer, expires integer);
@@ -17,8 +20,15 @@ export function openStore(dataDir) {
   const file = path.join(dataDir, 'control.db');
   const db = new DatabaseSync(file);
   try { fs.chmodSync(file, 0o600); } catch {}
-  db.exec('pragma journal_mode = wal; pragma busy_timeout = 2000;');
-  db.exec(SCHEMA);
+  try {
+    db.exec('pragma busy_timeout = 2000; pragma journal_mode = wal;');
+    // All shipped modules share this database. Create their tables in one
+    // durable commit; their standalone initializers remain safe and idempotent.
+    applySchema(db, SCHEMA + AUTH_SCHEMA + PUSH_SCHEMA);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
   const q = (sql) => db.prepare(sql);
   return {
     db, file,

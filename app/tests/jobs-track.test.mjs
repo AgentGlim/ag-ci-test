@@ -31,7 +31,11 @@ const env = { ...process.env, JOBS_TRACK_DIR: dir };
 const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const jt = (args, input) => execFileSync(PYTHON, [SCRIPT, ...args], { env, input, encoding: 'utf8' }).trim();
 const jtPy = (code, args = [], e = env) => execFileSync(PYTHON, [...loadArgs(code), ...args], { env: e, encoding: 'utf8' }).trim();
-const list = () => JSON.parse(jt(['list']));
+// Inspect the register directly between actions. Starting another Python process
+// for every assertion made native Windows runs exhaust the whole-file timeout.
+const list = () => fs.readdirSync(dir).filter(n => n.endsWith('.json')).flatMap(n => {
+  try { return [JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))]; } catch { return []; }
+});
 const get = (id) => list().find((j) => j.id === id);
 const PROJ = path.join(HOME, 'dev', 'projects');
 after(() => { for (const d of TEMPS) archiveScratch(d, suiteFailed ? 'failed' : 'passed', 'jobs-track shared fixture'); });
@@ -64,6 +68,12 @@ const snapshot = (root) => {
   walk(root);
   return out;
 };
+
+test('list CLI returns the stored job records', { skip }, () => {
+  const id = jt(['start', '--harness', 'codex', '--label', 'list fixture', '--kind', 'one-on-one']);
+  assert.deepEqual(JSON.parse(jt(['list'])).find(j => j.id === id), get(id));
+  jt(['finish', '--id', id, '--rc', '0']);
+});
 
 for (const registrationDelay of [0, 3200]) {
   test(`run wrapper: running while the command lives, then done / failed by rc (registration delay ${registrationDelay}ms)`, { skip }, async (t) => {
@@ -269,7 +279,7 @@ test('without a proc root: liveness still works from the pid alone and discovery
   // AGENTGLIM_PROC=/nonexistent is the macOS/Windows shape: no process table to read.
   const e = { ...env, AGENTGLIM_PROC: NO_PROC };
   const jtn = (args) => execFileSync(PYTHON, [SCRIPT, ...args], { env: e, encoding: 'utf8' }).trim();
-  const jlist = () => JSON.parse(jtn(['list']));
+  const jlist = list;
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
   const exited = once(child, 'exit'); // a killed child reports signalCode, not exitCode, so never re-await an exit event
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); });

@@ -69,8 +69,8 @@ npm run scaffold-harness          # add --dry-run first to see the paths
 
 That creates the empty queue folders and links `status-write.mjs`, `chat-write.mjs`, `owner-check.mjs`,
 `harness-set.mjs`, `io-guard.sh`, `auditq-wait.sh`, `auditq-wait.mjs` (the listener for native Windows, no bash needed),
-`jev-route.mjs`, `worker-launch.sh`, `worker-launch.mjs` and `done-ack.mjs` (finished-job notices) into `<run>/bin`
-(11 tools; `doctor` checks the same list). Existing files are
+`jev-route.mjs`, `worker-launch.sh`, `worker-launch.mjs`, `build-intake.mjs` and `done-ack.mjs` (finished-job notices) into `<run>/bin`
+(12 tools; `doctor` checks the same list). Existing files are
 preserved. A SuperAgent can then answer a refresh. Ask the app where everything is instead of guessing (the run folder is not
 inside the repo, and `AGENTGLIM_DATA` is usually unset):
 
@@ -230,3 +230,7 @@ SuperAgent when no heartbeat exists. The rule lives in `app/agent-notice.mjs`; "
 `app/setup.mjs`.
 
 For contribution and release checks, see CONTRIBUTING.md.
+
+## Standardized chat builds
+
+Setup creates version 1 of the recommendation-derived build defaults in your private data directory. Later setup saves preserve those defaults. For a task, feature or project launched from SuperAgent chat, use the linked `build-intake.mjs` protocol: seven owner-answer rounds, per-role Jev recommendations, canonical tracked `agent.sh` dispatch, and complete code-rendered launch cards. The connected plans harness supplies `agent.sh` and existing provider admission; an unconnected installation refuses dispatch. See `docs/build-intake.md` for the protocol, versioned defaults diffs and recovery limits. The tenth distinct dispatch receipt requests an owner review; recommended mode remains locked.

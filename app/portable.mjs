@@ -8,7 +8,7 @@ import { checkDeps, startupCheck } from './deps.mjs';
 import { scanSkills } from './skills.mjs';
 import { createLimitsPoller } from './limits.mjs';
 import { createProcGuard } from './proc-guard.mjs';
-import { listProcesses, readProcessStat } from './proc.mjs';
+import { listProcesses } from './proc.mjs';
 import { seedManualResets, resetView, RESETS_FILE, startResetChecks, checkClaudeResets } from './claude-resets.mjs';
 import { atomicJson, loadPrices, startPriceChecks, readJson } from './price-data.mjs';
 import { AGENTGLIM_ROOT } from './settings.mjs';
@@ -21,9 +21,7 @@ export function driverActive() {
   } catch{return false;}
 }
 export const usagePoller=createLimitsPoller({driverAlive:driverActive});
-// Startup/background scans share nonblocking native evidence; Stop/Allow still
-// use the guard's fresh synchronous identity checks immediately before acting.
-export const procGuard=createProcGuard({windowsScanQuery:readProcessStat});
+export const procGuard=createProcGuard();
 // a SuperAgent is around when any of its heartbeats is fresh (45 min): its private data heartbeat, the harness's
 // heartbeats folder (auditq-wait, superagent-check, ...), the audit queue's .alive, or the Codex bridge health file.
 // One source of truth with the dashboard's header dot: superagentBeat() in app/watchers.mjs.

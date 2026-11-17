@@ -92,6 +92,8 @@ goal-map.json
 !/harness/bin/auditq-wait.mjs
 !/harness/bin/worker-launch.sh
 !/harness/bin/worker-launch.mjs
+!/harness/bin/development-cycle.mjs
+!/harness/bin/build-intake.mjs
 # deploy staging and encoder scratch
 _deploy/
 .wrangler/
@@ -132,3 +134,7 @@ __pycache__/
 !/skills/theme/
 /skills/walkthrough-update/
 /.claude/skills/walkthrough-update
+
+# F36 shared intake protocol and documentation
+!/harness/bin/build-intake.mjs
+!/docs/build-intake.md

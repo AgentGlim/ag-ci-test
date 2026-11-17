@@ -114,3 +114,63 @@ jobs:
           mkdir -p "$RUNNER_TEMP/home" "$RUNNER_TEMP/tmp"
           cd "$RUNNER_TEMP/published"
           HOME="$RUNNER_TEMP/home" USERPROFILE="$RUNNER_TEMP/home" TMPDIR="$RUNNER_TEMP/tmp" TEMP="$RUNNER_TEMP/tmp" TMP="$RUNNER_TEMP/tmp" CI=true npm test
+
+  # Compile and bundle all desktop platforms before a tag is pushed. No release uploads.
+  desktop-build:
+    name: desktop build (${{ matrix.os }})
+    needs: privacy
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+          - os: macos-latest
+            bundles: dmg
+          - os: windows-latest
+            bundles: nsis,msi
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/target
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build and smoke dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils xvfb x11-utils dbus-x11
+      # Shared with the main-branch warmer. Tags restore but never create tag-scoped caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-release-v1-${{ runner.os }}-${{ runner.arch }}
+          workspaces: desktop -> target
+          cache-bin: 'false'
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install and verify prebuilt Tauri CLI
+        run: npx --yes --package @tauri-apps/cli@2.12.4 tauri --version
+      - name: Build installers without uploading
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: desktop
+          tauriScript: npx --yes --package @tauri-apps/cli@2.12.4 tauri
+          args: --bundles ${{ matrix.bundles }} -- --locked
+          uploadWorkflowArtifacts: false
+      - name: Linux native-window and server-lifecycle smoke
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- node desktop/smoke-test.mjs
+      - name: Smoke diagnostics on failure
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-desktop-smoke-${{ matrix.os }}
+          path: desktop/target/smoke-*/
+          if-no-files-found: ignore
+          retention-days: 7

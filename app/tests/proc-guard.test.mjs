@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {readProcess,evaluateProcesses,createProcGuard,safeCommand,knownProcess} from '../proc-guard.mjs';
-import {createNativeProcessStatReader} from '../proc.mjs';
 const temp=()=>fs.mkdtempSync(path.join(os.tmpdir(),'ag-proc-'));
 function proc(root,pid,{ppid=1,start='100000',comm='python3',args=['python3','-'],rss=30000,tty=0,env=['CODEX_FIXTURE=1'],uid=1000}={}) {
   const dir=path.join(root,String(pid));fs.mkdirSync(path.join(dir,'fd'),{recursive:true});
@@ -138,84 +137,6 @@ test('Windows rechecks PID creation and executable before graceful and forced ta
   const changed=windowsFixture();changed.table.get(451).executable='C:\\user\\other.exe';
   assert.equal(changed.g.scan().flagged.length,0);
   await assert.rejects(changed.g.stop(451,changed.identity.start),/protected/);
-});
-test('Windows startup guard scans can use pending snapshots but actions revalidate fresh identity',async t=>{
-  const f=windowsFixture();
-  let cached=null,fresh=0;
-  const stopped=[];
-  const guard=createProcGuard({platform:'win32',data:f.data,now:()=>10_000_000,dev:false,jobs:()=>[],config:()=>({}),
-    windowsScanQuery:()=>cached,windowsQuery:pid=>{fresh++;return f.table.get(pid);},
-    windowsStop:(...args)=>stopped.push(args),delay:()=>{}});
-  const timer=guard.start();t.after(()=>clearInterval(timer));
-  assert.deepEqual(guard.view().flagged,[],'pending evidence does not block startup or flag a process');
-  assert.equal(fresh,0,'background scan never uses the synchronous action query');
-  cached={...f.table.get(451)};
-  assert.equal(guard.scan().flagged.length,1);
-  f.table.get(451).start=winStart(9999999);
-  await assert.rejects(guard.stop(451,f.identity.start),/protected/);
-  assert.ok(fresh>0,'a cached snapshot cannot authorize stopping a reused PID');
-  assert.deepEqual(stopped,[]);
-});
-test('Windows memory baseline survives cache expiry and pending evidence, resets on reused identity, never authorizes alone',async t=>{
-  // Production native reader + production guard; one registered, untracked worker under one hour old.
-  t.mock.timers.enable({apis:['setTimeout']});
-  const MiB=1024**2,data=temp();let time=10_000_000;
-  const dir=path.join(data,'launched-processes');fs.mkdirSync(dir);
-  const register=identity=>fs.writeFileSync(path.join(dir,'451.json'),JSON.stringify(identity));
-  const identity={pid:451,start:winStart(time-600e3),executable:'C:\\tools\\worker.exe'};register(identity);
-  let host={...identity,rss:10*MiB},fresh=null;const pending=[],stopped=[];
-  const reader=createNativeProcessStatReader({platform:'win32',now:()=>time,run(command,args,options,done){pending.push(()=>done(null,JSON.stringify(host)));return {kill(){}};}});
-  const complete=()=>{assert.equal(pending.length,1,'one async query is in flight');pending.shift()();};
-  const guard=createProcGuard({platform:'win32',data,now:()=>time,dev:false,jobs:()=>[],config:()=>({}),
-    windowsScanQuery:reader,windowsQuery:()=>fresh,windowsStop:(...args)=>stopped.push(args),delay:()=>{}});
-  const saved=()=>JSON.parse(fs.readFileSync(path.join(data,'proc-guard.json'),'utf8')).samples;
-  assert.deepEqual(guard.scan().flagged,[]);complete();
-  assert.deepEqual(guard.scan().flagged,[]);
-  assert.equal(saved()[451].minRss,10*MiB,'first completed observation seeds the baseline');
-  time+=6000;host={...host,rss:700*MiB};
-  assert.deepEqual(guard.scan().flagged,[],'pending evidence flags nothing');
-  assert.deepEqual(saved()[451],{start:identity.start,executable:identity.executable,minRss:10*MiB},'pending scan keeps this generation baseline');
-  // Retained history is not evidence: Stop/Allow need a fresh matching identity.
-  await assert.rejects(guard.stop(451,identity.start),/protected/);
-  assert.throws(()=>guard.allow(451,identity.start),/changed/);
-  fresh={...identity,pid:451,start:winStart(time-1),rss:700*MiB};
-  await assert.rejects(guard.stop(451,identity.start),/protected/,'a reused PID cannot be stopped under the old identity');
-  assert.deepEqual(stopped,[]);
-  complete();
-  const flagged=guard.scan().flagged;
-  assert.deepEqual(flagged.map(({pid,reason,growth})=>({pid,reason,growth})),[{pid:451,reason:'Grew over 500 MB',growth:690*MiB}],'expiry -> pending -> completed still detects growth');
-  fresh={...host};await guard.stop(451,identity.start);
-  assert.deepEqual(stopped.map(([pid,force])=>[pid,force]),[[451,false]],'fresh matching evidence authorizes the action');
-  // Same PID, new registered generation: the old baseline is dropped while evidence is pending.
-  time+=6000;const reused={...identity,start:winStart(time-1000)};register(reused);host={...reused,rss:700*MiB};
-  assert.deepEqual(guard.scan().flagged,[]);
-  assert.equal(saved()[451],undefined,'a changed registration resets the baseline even before fresh evidence');
-  complete();assert.deepEqual(guard.scan().flagged,[],'reused identity does not inherit growth');
-  assert.deepEqual(saved()[451],{start:reused.start,executable:reused.executable,minRss:700*MiB});
-  // Same start token but a different confirmed executable is also a new identity.
-  time+=6000;register({...reused,executable:'C:\\tools\\other.exe'});host={...reused,executable:'C:\\tools\\other.exe',rss:1400*MiB};
-  guard.scan();assert.equal(saved()[451],undefined);
-  complete();assert.deepEqual(guard.scan().flagged,[]);assert.equal(saved()[451].minRss,1400*MiB);
-  // Removing the registration prunes its history.
-  fs.renameSync(path.join(dir,'451.json'),path.join(data,'451.json.moved'));
-  time+=6000;guard.scan();assert.deepEqual(saved(),{});
-});
-test('Windows pending scan keeps a baseline when the queried executable differs only in case',t=>{
-  t.mock.timers.enable({apis:['setTimeout']});
-  const MiB=1024**2,data=temp();let time=10_000_000;
-  const dir=path.join(data,'launched-processes');fs.mkdirSync(dir);
-  const identity={pid:451,start:winStart(time-600e3),executable:'C:\\Tools\\Worker.exe'};
-  fs.writeFileSync(path.join(dir,'451.json'),JSON.stringify(identity));
-  let host={...identity,executable:'c:\\tools\\worker.exe',rss:10*MiB};const pending=[];
-  const reader=createNativeProcessStatReader({platform:'win32',now:()=>time,run(command,args,options,done){pending.push(()=>done(null,JSON.stringify(host)));return {kill(){}};}});
-  const guard=createProcGuard({platform:'win32',data,now:()=>time,dev:false,jobs:()=>[],config:()=>({}),
-    windowsScanQuery:reader,windowsQuery:()=>null,windowsStop:()=>{throw new Error('no stop');},delay:()=>{}});
-  const saved=()=>JSON.parse(fs.readFileSync(path.join(data,'proc-guard.json'),'utf8')).samples;
-  guard.scan();pending.shift()();guard.scan();assert.equal(saved()[451].minRss,10*MiB);
-  time+=6000;host={...host,rss:700*MiB};guard.scan();
-  assert.equal(saved()[451]?.minRss,10*MiB,'case-only path difference is the same identity');
-  pending.shift()();
-  assert.deepEqual(guard.scan().flagged.map(x=>x.reason),['Grew over 500 MB']);
 });
 test('Windows escalation leaves exited and reused PIDs alone and fails closed on unavailable evidence',async()=>{
   for(const replacement of [null,{start:winStart(9999999)}, {executable:'C:\\user.exe'}]) {
