@@ -24,7 +24,7 @@ import './env.mjs'; // first: API keys and settings from <repo>/.env (process en
 import { ENV_FILE, keyStatuses } from './env.mjs'; // Setup page shows where keys go
 import fs from 'node:fs';
 import os from 'node:os';
-import { listProcesses, readMemoryInfo, readStat } from './proc.mjs';
+import { listProcesses, readMemoryInfo, readStat, withProcessSnapshot } from './proc.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
@@ -1781,7 +1781,8 @@ setInterval(() => { try { others.scanSessions(); } catch (e) { console.error('ot
 
 // live, unfiltered state shared by every viewer; rebuilt every 5 s
 let lastHistory = 0;
-function scan() {
+function scan() { return withProcessSnapshot(scanSnapshot); }
+function scanSnapshot() {
   const state = JSON.parse(readText(`${RUN}/state.json`) || '{"projects":{}}');
   scanClaudeQueue();
   scanLive();
@@ -1898,7 +1899,8 @@ function subRecs(f) {
 }
 
 const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
-function view(base, f) {
+function view(base, f) { return withProcessSnapshot(() => viewSnapshot(base, f)); }
+function viewSnapshot(base, f) {
   const now = Date.now();
   const rs = [...recs.values()].filter((r) => f.inRange(r.t) && !f.excl.has(r.provider));
   const all_ = rs.concat(subRecs(f)); // + Codex and Claude subscription usage, priced as API estimates

@@ -214,13 +214,15 @@ test('distinct processes racing the same prepared launch start exactly one dispa
   const { spawn } = await import('node:child_process');
   const { once } = await import('node:events');
   const w = world(t), r = await ready(w, 'cross-process'), marker = path.join(w.root, 'starts.txt'), jobsFile = path.join(w.root, 'jobs.json');
-  fs.writeFileSync(jobsFile, '[]');
+  // The real tracker publishes records atomically. Never truncate a JSON file a
+  // competing launcher may be reading while reconciling the dispatch intent.
   const moduleURL = new URL('../build-intake/index.mjs', import.meta.url).href;
   const code = `import fs from 'node:fs'; import {createBuildIntake} from ${JSON.stringify(moduleURL)};
+    import {publish,read} from ${JSON.stringify(new URL('../build-intake/durable.mjs', import.meta.url).href)};
     const [root,id,marker,jobsFile]=process.argv.slice(1);
-    const api=createBuildIntake({dataDir:root,runDir:root+'/run',jobs:()=>JSON.parse(fs.readFileSync(jobsFile)),
+    const api=createBuildIntake({dataDir:root,runDir:root+'/run',jobs:()=>read(jobsFile)||[],
       admit:async()=>{await new Promise(r=>setTimeout(r,20));return {ok:true}},
-      dispatch:async(i)=>{fs.appendFileSync(marker,'start\\n');fs.writeFileSync(jobsFile,JSON.stringify([{id:'one-job',project:'01-demo',launcher:'agent.sh',outdir:i.outdir,status:'running',pid:123,pidStart:'456'}]));}});
+      dispatch:async(i)=>{fs.appendFileSync(marker,'start\\n');publish(jobsFile,[{id:'one-job',project:'01-demo',launcher:'agent.sh',outdir:i.outdir,status:'running',pid:123,pidStart:'456'}]);}});
     await api.launch(id);`;
   const children = [0, 1].map(() => spawn(process.execPath, ['--input-type=module', '-e', code, w.root, r.id, marker, jobsFile], { stdio: ['ignore', 'pipe', 'pipe'] }));
   const results = await Promise.all(children.map(async c => { let error = ''; c.stderr.on('data', x => { error += x; }); const [rc] = await once(c, 'exit'); return { rc, error }; }));

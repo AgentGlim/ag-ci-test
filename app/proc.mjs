@@ -34,14 +34,28 @@ export function readStat(pid, root = procRoot()) {
     pgid: Number(rest[2]), tty: Number(rest[4]), starttime: Number(rest[19]), raw };
 }
 
+// One scan can ask about the same PID through tracking, row icons and global
+// counts. Share its observation, including failures, within that synchronous scan.
+// Never retain it between scans or use it for the guarded stop operation.
+let processSnapshot = null;
+export function withProcessSnapshot(read) {
+  if (processSnapshot) return read();
+  processSnapshot = new Map();
+  try { return read(); } finally { processSnapshot = null; }
+}
+
 // Match jobs-track's native start identity without converting FILETIME to a lossy Number.
 // A fixture root always wins; an absent fixture pid must never consult the real host.
 export function readProcessStat(pid, root = procRoot(), { platform = process.platform, run = execFileSync } = {}) {
   if (root) return readStat(pid, root);
   if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return null;
   if (platform === 'win32') {
-    const row = queryWindowsProcess(Number(pid), run);
-    return row ? { pid: Number(pid), state: 'S', starttime: row.start } : null;
+    const key = Number(pid);
+    if (processSnapshot?.has(key)) return processSnapshot.get(key);
+    const row = queryWindowsProcess(key, run);
+    const stat = row ? { pid: key, state: 'S', starttime: row.start } : null;
+    processSnapshot?.set(key, stat);
+    return stat;
   }
   if (platform === 'darwin') {
     try {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { listProcesses, parsePs, parseCim } from '../proc.mjs';
-import { readProcessStat } from '../proc.mjs';
+import { readProcessStat, withProcessSnapshot } from '../proc.mjs';
 import { pidIdentity, workerState, livePopulation } from '../live-workers.mjs';
 
 test('native start identities preserve macOS lstart and Windows FILETIME; PID reuse stays unknown', () => {
@@ -25,6 +25,35 @@ test('native start identities preserve macOS lstart and Windows FILETIME; PID re
   assert.equal(readProcessStat(42, null, { platform: 'darwin', run: () => { throw Error('gone'); } }), null);
   assert.equal(readProcessStat(42, null, { platform: 'win32', run: () => { throw Error('gone'); } }), null);
   assert.equal(readProcessStat(42, '/missing-proc-fixture', { platform: 'darwin', run: () => assert.fail('fixture must win') }), null);
+});
+
+test('Windows snapshot reads each PID once, caches failed observations, and never retains identities', () => {
+  let calls = 0, start = '134077761690000001';
+  const run = (_command, args) => {
+    calls++;
+    const pid = Number(args.at(-1).match(/-Id (\d+)/)[1]);
+    if (pid === 43) throw new Error('gone');
+    return JSON.stringify({ pid, start, executable: 'C:/node.exe' });
+  };
+  const read = pid => readProcessStat(pid, null, { platform: 'win32', run });
+  withProcessSnapshot(() => {
+    for (let i = 0; i < 20; i++) {
+      assert.equal(read(42).starttime, start);
+      assert.equal(read(43), null);
+      withProcessSnapshot(() => assert.equal(read(42).starttime, start));
+    }
+    assert.equal(calls, 2, 'rows, counts and nested views share two observations');
+  });
+  start = '134077761690000002';
+  assert.equal(read(42).starttime, start, 'a later observation detects PID reuse');
+  assert.equal(calls, 3);
+  assert.throws(() => withProcessSnapshot(() => { read(42); throw Error('scan failed'); }), /scan failed/);
+  start = '134077761690000003';
+  assert.equal(read(42).starttime, start, 'a failed scan also releases its cache');
+  assert.equal(calls, 5);
+  withProcessSnapshot(() => assert.equal(readProcessStat(42, '/missing-proc-fixture', {
+    platform: 'win32', run: () => assert.fail('a fixture must never query the host'),
+  }), null));
 });
 
 test('ps parser reads state, parent, terminal and quoted arguments', () => {

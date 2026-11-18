@@ -34,6 +34,7 @@ try {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    await page.clock.setFixedTime(new Date('2026-11-18T12:00:00Z'));
     await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
     const card = page.locator('#approvals .ai', { hasText: 'Pick the fixture option' });
     await card.waitFor({ timeout: 20000 });
@@ -44,7 +45,9 @@ try {
     assert.equal(await send.count(), 1);
     const copy = page.locator('#approvals button[data-act=copy]');
     assert.equal(await copy.count(), 1, 'Copy stays next to Send');
+    const firstResponse = page.waitForResponse(r => r.url().endsWith('/api/approvals/send') && r.request().method() === 'POST');
     await send.click();
+    const firstDelivery = await (await firstResponse).json();
     await page.waitForSelector('#apSend .asr:not([data-state=sending])', { timeout: 15000 });
     const st = await page.locator('#apSend .asr').first().getAttribute('data-state');
     const txt = await page.locator('#apSend').innerText();
@@ -54,9 +57,13 @@ try {
       let files = fs.readdirSync(inbox).filter((f) => f.endsWith('.json'));
       assert.equal(files.length, 1);
       assert.match(JSON.parse(fs.readFileSync(path.join(inbox, files[0]), 'utf8')).text, /fixture note/);
-      // click again: same text, no duplicate
+      // A later click with identical choices must have the same delivery identity.
+      // Advancing Date makes the old timestamp-in-the-message bug deterministic.
+      await page.clock.setFixedTime(new Date('2026-11-18T12:01:00Z'));
+      const repeatedResponse = page.waitForResponse(r => r.url().endsWith('/api/approvals/send') && r.request().method() === 'POST');
       await page.locator('#approvals button[data-act=send]').click();
-      await page.waitForTimeout(800);
+      const repeatedDelivery = await (await repeatedResponse).json();
+      assert.equal(repeatedDelivery.id, firstDelivery.id, 'unchanged choices keep the same delivery identity across clock changes');
       files = fs.readdirSync(inbox).filter((f) => f.endsWith('.json'));
       assert.equal(files.length, 1, 'no duplicate on resend');
       // the agent answers: the card turns to read

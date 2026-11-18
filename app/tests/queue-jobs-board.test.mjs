@@ -28,9 +28,10 @@ test('headless-take jobs: NN-slug__stage under its plan with stage + model; obse
   write('plans/69-fake-held/HOLD', 'held\n');
   write('plans/_run/state.json', { projects: { '66-fake-bench': { stage: 'v15-r1', stages: [] }, '67-fake-done': { stage: 'done', stages: [] }, '69-fake-held': { stage: 'v1-r1', stages: [] } } });
   write('plans/_run/driver.log', '');
-  // two fake headless-take jobs, registered the way headless-take.sh does it (live pids so they count as running)
+  // Keep the workers alive until cleanup; a fixed sleep can expire during cold
+  // Windows startup and change this attribution test into a liveness failure.
   const env = { ...process.env, JOBS_TRACK_DIR: path.join(home, 'data', 'tracked-jobs'), AGENTGLIM_PLANS: path.join(home, 'plans') };
-  const s1 = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']), s2 = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+  const s1 = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']), s2 = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
   t.after(async () => {
     for (const p of [s1, s2]) {
       if (p.exitCode === null && p.signalCode === null) {
