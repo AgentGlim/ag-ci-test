@@ -2,6 +2,7 @@
 // listener runs and only names shipped tools, one update path (`npm run update`), and CI/syntax coverage for the
 // harness and tools folders. Each test uses a throwaway HOME so nothing private is read or written.
 import test from 'node:test';
+import { freshFetch as fetch } from './helpers/fresh-fetch.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

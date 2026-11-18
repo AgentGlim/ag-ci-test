@@ -26,6 +26,19 @@ jobs:
           git ls-files > "$RUNNER_TEMP/list.txt"
           node dev/leak-scan.mjs . --public "$RUNNER_TEMP/list.txt" --env /dev/null
 
+  powershell-fixtures:
+    name: PowerShell fixtures (5.1 and pwsh)
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Windows PowerShell 5.1 fixtures
+        shell: powershell
+        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '5.1.'
+      - name: PowerShell 7 fixtures
+        shell: pwsh
+        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '7.'
+
   tests:
     name: tests (${{ matrix.os }}, Node ${{ matrix.node }}, Python ${{ matrix.python }})
     needs: privacy

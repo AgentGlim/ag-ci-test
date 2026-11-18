@@ -2,6 +2,7 @@
 // Fixtures are the shapes of the incident: plan 69 (queued Claude jobs: agent.sh wrapper + headless take) and plan 83
 // (Pi workers seen by both the harness scan and jobs-track). Made-up plan names, no machine paths.
 import test from 'node:test';
+import { archiveDirectory } from './helpers/archive-directory.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -74,9 +75,9 @@ test('a one-on-one chat record of an interactive session on the row is that sess
 
 test('a symlinked plans path joins its real path', (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-'));
-  t.after(() => fs.renameSync(tmp, `${tmp}-done`)); // never rm (owner rule); the temp folder is left renamed
+  t.after(() => archiveDirectory(tmp));
   fs.mkdirSync(path.join(tmp, 'real', 'plans', '70-x', 'orch'), { recursive: true });
-  fs.symlinkSync(path.join(tmp, 'real', 'plans'), path.join(tmp, 'link'));
+  fs.symlinkSync(path.join(tmp, 'real', 'plans'), path.join(tmp, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.equal(normDir(path.join(tmp, 'link', '70-x', 'orch')), normDir(path.join(tmp, 'real', 'plans', '70-x', 'orch')));
   const a = agentsOf({ harness: [{ role: 'worker', outdir: path.join(tmp, 'link', '70-x', 'orch') }], tracked: [rec({ id: 'r', launcher: 'agent.sh', outdir: path.join(tmp, 'real', 'plans', '70-x', 'orch') })] });
   // F31: an outdir is a location, never an identity, so this input (no pid, no dispatch generation on either
@@ -118,7 +119,7 @@ test('phantom subagent (no agent id, retried): stopped once a newer record of th
 
 test('subagent-status: a Claude record without agentId is unknown, never matched by the parent sessionId', (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-home-'));
-  t.after(() => fs.renameSync(home, `${home}-done`));
+  t.after(() => archiveDirectory(home));
   const d = path.join(home, '.claude', 'projects', 'p', 'parent-session', 'subagents'); fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(d, 'agent-zzz.jsonl'), JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [] } }) + '\n');
   const r = subagentStatus([{ id: 'x', kind: 'subagent', status: 'running', harness: 'claude', sessionId: 'parent-session' }], { home, now });

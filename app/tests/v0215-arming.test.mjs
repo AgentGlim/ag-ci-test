@@ -1,6 +1,7 @@
 // v0.2.15: fresh-install journey (setup -> refresh -> status_ask queued), optional modes.json, honest setup
 // (saved vs ready), restart notice when the plans path changes, and update refresh of managed scripts.
 import test from 'node:test';
+import { freshFetch as fetch } from './helpers/fresh-fetch.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

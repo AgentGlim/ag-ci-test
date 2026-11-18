@@ -234,10 +234,10 @@ test('reap: rc=0 is done, rc!=0 failed, 124 failed (timed out); a dead agent.sh 
   let j = await mk((o) => fs.writeFileSync(path.join(o, 'rc'), '0\n')); assert.equal(j.status, 'done'); assert.equal(j.rc, '0');
   j = await mk((o) => fs.writeFileSync(path.join(o, 'rc'), '1\n')); assert.equal(j.status, 'failed');
   j = await mk((o) => fs.writeFileSync(path.join(o, 'rc'), '124\n')); assert.equal(j.status, 'failed'); assert.equal(j.endReason, 'timed out');
-  // Timestamp the completion after registration, including on slow Windows runners.
+  // The tracker reads local shell timestamps using Python's timezone. Generate
+  // that fixture with the same runtime, avoiding cross-runtime timezone assumptions.
   j = await mk((o) => {
-    const d = new Date(), pad = n => String(n).padStart(2, '0');
-    const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const stamp = execFileSync(PYTHON, ['-c', 'import time; print(time.strftime("%Y-%m-%d %H:%M:%S"))'], { env: aenv, encoding: 'utf8' }).trim();
     fs.writeFileSync(path.join(o, 'meta'), `${stamp} end kind=codex-only rc=0\r\n`);
   }); assert.equal(j.status, 'done'); assert.equal(j.rc, '0');
 });
