@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
-import { queryWindowsProcess } from './windows-processes.mjs';
 
 // One proc-root switch for every process read (R9.1). AGENTGLIM_PROC points tests and
 // fixture runs at a recorded tree; a platform without procfs has no root at all.
@@ -52,8 +51,17 @@ export function readProcessStat(pid, root = procRoot(), { platform = process.pla
   if (platform === 'win32') {
     const key = Number(pid);
     if (processSnapshot?.has(key)) return processSnapshot.get(key);
-    const row = queryWindowsProcess(key, run);
-    const stat = row ? { pid: key, state: 'S', starttime: row.start } : null;
+    // Monitoring needs only the process generation. Get-Process/ConvertTo-Json
+    // load PowerShell modules on a cold host, and the control probe also requires
+    // an executable path. Neither belongs in this bounded, read-only stat query.
+    // Use the core .NET API and keep FILETIME as text, just like jobs-track.
+    let stat = null;
+    try {
+      const start = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        `$p=[System.Diagnostics.Process]::GetProcessById(${key}); try { if ($p.HasExited) { exit 1 }; $p.StartTime.ToFileTimeUtc().ToString([System.Globalization.CultureInfo]::InvariantCulture) } finally { $p.Dispose() }`],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim();
+      if (/^[1-9]\d*$/.test(start)) stat = { pid: key, state: 'S', starttime: start };
+    } catch { /* exited, inaccessible or timed out: no verified process */ }
     processSnapshot?.set(key, stat);
     return stat;
   }
