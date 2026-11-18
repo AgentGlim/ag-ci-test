@@ -233,7 +233,7 @@ const toPlans = (p) => p && p.replace(/^file:\/\//, '').replace(PLANS_REAL, PLAN
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // page code id (index.html + its scripts/styles): a deploy changes it, a restart does not
 const pageBuildId = makeBuildId(HERE);
-const OPENCODE_DB = `${process.env.HOME}/.local/share/opencode/opencode.db`;
+const OPENCODE_DB = path.join(HOME, '.local', 'share', 'opencode', 'opencode.db');
 let PORT = Number(process.argv[2] ?? process.env.PORT ?? 18990);
 let pagesPort = PORT === 0 ? 0 : PORT + 1;
 // New-release check: one cached GitHub GET per 12 h at most. "dev" builds and opt-outs never fetch.
@@ -365,9 +365,9 @@ function loadBilling() {
   billed = { rows: [...rows.values()], sig };
 }
 const PROBES = toPlans(`${WORK}/probes`); // one-off test calls, outside plans/NN-* so the driver never sees them
-const CLAUDE_PROJECTS = `${process.env.HOME}/.claude/projects`;
-const CLAUDE_RUN_PROJECTS = `${RUN}/claude-home/projects`; // Haiku workers' run-only Claude config (agent.sh CLAUDE_HOME)
-const CODEX_SESSIONS = `${process.env.HOME}/.codex/sessions`;
+const CLAUDE_PROJECTS = path.join(HOME, '.claude', 'projects');
+const CLAUDE_RUN_PROJECTS = path.join(RUN, 'claude-home', 'projects'); // Haiku workers' run-only Claude config (agent.sh CLAUDE_HOME)
+const CODEX_SESSIONS = path.join(HOME, '.codex', 'sessions');
 // optional read-only copy of an older machine's run history, laid out as on that disk
 const IMPORTED = `${WORK}/imported/wsl`;
 const IMP_HOME = `${IMPORTED}${HOME}`;
@@ -449,7 +449,7 @@ function addRec(ts, provider, model, input, output, cacheRead, cost, cacheWrite 
 
 function roleOf(rel) {
   // rel: NN-slug/_build/<...>, or _observatory/probes/<name> for one-off test calls
-  const p = rel.split('/');
+  const p = slashPath(rel).split('/');
   if (p[0] === '_observatory' || p[0] === '_agentglim') return { project: '(probe)', step: 'probe', role: 'probe', task: p[2] };
   // archived run attempts: _run/archive-run1/NN-slug/_build/<...> (moved to _run/_archive/archive-run1/... on 2026-11-14, both layouts accepted), labelled run1/NN-slug so they stay out of the live project rows
   if (p[0] === '_run' && p[1] === '_archive' && p[2]?.startsWith('archive-')) return roleOf(['_run', ...p.slice(2)].join('/'));
@@ -545,8 +545,8 @@ function sessionMeta(file) {
 const lastPromptAt = (file) => sessionMeta(file).at;
 // ~/.claude/sessions/<pid>.json gives the session id, name and busy/idle status
 function manualInfo(pid, cwd) {
-  let s = {}; try { s = JSON.parse(fs.readFileSync(`${process.env.HOME}/.claude/sessions/${pid}.json`, 'utf8')); } catch {}
-  const file = s.sessionId && `${process.env.HOME}/.claude/projects/${(s.cwd || fs.realpathSync(cwd)).replace(/[^A-Za-z0-9]/g, '-')}/${s.sessionId}.jsonl`;
+  let s = {}; try { s = JSON.parse(fs.readFileSync(path.join(HOME, '.claude', 'sessions', `${pid}.json`), 'utf8')); } catch {}
+  const file = s.sessionId && path.join(CLAUDE_PROJECTS, (s.cwd || fs.realpathSync(cwd)).replace(/[^A-Za-z0-9]/g, '-'), `${s.sessionId}.jsonl`);
   const { at, model } = file ? sessionMeta(file) : { at: 0, model: null };
   const idle = s.status === 'idle' && Date.now() - (at || s.startedAt || 0) > MANUAL_IDLE_MS;
   return { pid, name: s.name || `pid ${pid}`, status: s.status || null, lastPrompt: at || null, idle, file, model };
@@ -663,7 +663,7 @@ function parseMeta(text) {
 }
 
 function scanJob(dir) {
-  const rel = path.relative(PLANS, dir);
+  const rel = slashPath(path.relative(PLANS, dir));
   let j = jobs.get(dir);
   if (!j) {
     j = { dir, rel, ...roleOf(rel), tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0, calls: 0,
@@ -1031,9 +1031,9 @@ function haikuUsage() {
     if (j.kind !== 'haiku' && j.kind !== 'sonnet' && !queued) continue;
     const head = j.kind === 'haiku' ? promptHead(`${path.dirname(j.dir)}/prompt.md`)
       : j.kind === 'sonnet' ? promptHead(`${j.dir}/prompt.md`) : '';
-    const rel = path.relative(PLANS, toPlans(j.dir));
+    const rel = slashPath(path.relative(PLANS, toPlans(j.dir)));
     if (!head && !queued) continue;
-    const projDir = `${PLANS}/${rel.split('/')[0]}`;
+    const projDir = path.join(PLANS, rel.split('/')[0]);
     const t = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     let cost = 0, calls = 0, last = null;
     const ck = `${j.dir}|${head.length}|${claudeHeads.size}`;
@@ -1041,14 +1041,14 @@ function haikuUsage() {
     if (!cached || cached.k !== ck) {
       const sids = [];
       for (const [sid, h] of claudeHeads) {
-        if (queued) { const f = h.match(/Follow this prompt file: (\S+)/)?.[1]; if (!f || path.relative(PLANS, toPlans(path.dirname(f))) !== rel) continue; }
+        if (queued) { const f = h.match(/Follow this prompt file: (\S+)/)?.[1]; if (!f || slashPath(path.relative(PLANS, toPlans(path.dirname(f)))) !== rel) continue; }
         else if (!h.startsWith(head.slice(0, 300))) continue;
         sids.push([sid, h]);
       }
       jobSids.set(j.dir, cached = { k: ck, sids });
     }
     for (const [sid, h] of cached.sids) {
-      if (queued) { const f = h.match(/Follow this prompt file: (\S+)/)?.[1]; if (!f || path.relative(PLANS, toPlans(path.dirname(f))) !== rel) continue; }
+      if (queued) { const f = h.match(/Follow this prompt file: (\S+)/)?.[1]; if (!f || slashPath(path.relative(PLANS, toPlans(path.dirname(f)))) !== rel) continue; }
       else if (!h.startsWith(head.slice(0, 300))) continue;
       if (j.kind === 'sonnet') {
         const st = claudeStart.get(sid) || 0;
@@ -1174,7 +1174,7 @@ function scanZenDb(file) {
       zenSeen.set(file, Math.max(zenSeen.get(file) || 0, r.t));
       let d; try { d = JSON.parse(r.data); } catch { continue; }
       if (d.role !== 'assistant') continue;
-      const project = path.relative(PLANS, toPlans(r.dir)).split('/')[0];
+      const project = slashPath(path.relative(PLANS, toPlans(r.dir))).split('/')[0];
       const tk = d.tokens || {};
       const out = (tk.output || 0) + (tk.reasoning || 0); // OpenCode counts reasoning apart from output
       const tok = (tk.input || 0) + out + (tk.cache?.read || 0) + (tk.cache?.write || 0);
