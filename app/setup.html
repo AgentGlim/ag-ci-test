@@ -123,7 +123,6 @@ async function loadAddons(){
   const reset=data.claudeResets;
   $('resetsSetup').innerHTML=C.subs.claude.on ? `<h3>Claude manual limit resets</h3><p>${esc(reset.note)} ${reset.available ?? '?'} available. Status: ${esc(reset.status || 'not checked')}.</p><button type="button" id="claudeLogin">Sign in to claude.ai once</button><p class="meta">Opens a dedicated browser profile. AgentGlim only reads the Usage panel; use reset controls yourself.</p>`:'';
   if($('claudeLogin'))$('claudeLogin').onclick=async()=>{try{const r=await fetch('/api/claude-resets/login',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const j=await r.json();$('msg').textContent=j.status || j.error;}catch{$('msg').textContent='Could not open sign-in. Check Chromium and Playwright in the dependency report (Local AI section).';}};
-  $('autoStop').value=C.guard?.autoStopHours || 0;$('apiBudget').value=C.budget?.apiDailyUsd ?? 5;$('budgetAccept').checked=!!C.setupComplete;
 }
 function drawCustom() {
   $('cList').innerHTML = C.custom.map((c, i) => `<div class="cp" data-i="${i}"><input type="text" data-f="name" value="${esc(c.name)}" aria-label="Project name" placeholder="Name">
@@ -162,7 +161,10 @@ $('save').onclick = async () => {
   catch (e) { $('msg').textContent = `Not saved: ${e.message}`; }
 };
 addEventListener('hashchange', () => { const t = location.hash && document.querySelector(location.hash); if (t && t.tagName === 'DETAILS') t.open = true; });
-async function load() { S = await (await fetch('/api/setup', { cache: 'no-store' })).json(); C = structuredClone(S.config); draw(); if (S.paths?.restartNeeded && !$('msg').textContent) { $('msg').textContent = `Restart AgentGlim: it is watching ${S.paths.plans}, but Setup points to ${S.paths.configuredPlans}.`; $('msg').style.color = 'var(--warning-text,#f0c674)'; } await loadAddons(); if (location.hash) { const t = document.querySelector(location.hash); if (t && t.tagName === 'DETAILS') t.open = true; t?.scrollIntoView({ behavior: 'instant' }); } }
+async function load() { S = await (await fetch('/api/setup', { cache: 'no-store' })).json(); C = structuredClone(S.config); draw();
+  // Initialize from saved config before yielding. Late add-on inventory must never reset edits or consent.
+  $('autoStop').value=C.guard?.autoStopHours || 0;$('apiBudget').value=C.budget?.apiDailyUsd ?? 5;$('budgetAccept').checked=!!C.setupComplete;
+  if (S.paths?.restartNeeded && !$('msg').textContent) { $('msg').textContent = `Restart AgentGlim: it is watching ${S.paths.plans}, but Setup points to ${S.paths.configuredPlans}.`; $('msg').style.color = 'var(--warning-text,#f0c674)'; } await loadAddons(); if (location.hash) { const t = document.querySelector(location.hash); if (t && t.tagName === 'DETAILS') t.open = true; t?.scrollIntoView({ behavior: 'instant' }); } }
 load().catch((e) => { $('introTxt').textContent = `Could not load setup: ${e.message}`; });
 </script>
 </body></html>

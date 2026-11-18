@@ -87,7 +87,7 @@ test('browser tools are pinned and smoke runs fixture specs once in one Linux la
   assert.equal(job.strategy, undefined);
   assert.match(action(job, 'actions/setup-node@').with['cache-dependency-path'], /dev\/ci\/package-lock.json/);
   const body = job.steps.find(s => s.name === 'Fixture-backed browser smoke').run;
-  assert.match(body, /for spec in skills-editor-xss send-to-agent inbox-resend/);
+  assert.match(body, /for spec in skills-editor-xss send-to-agent inbox-resend setup-budget;/);
   assert.match(body, /timeout --kill-after=10s 120s/);
   assert.match(body, /export HOME=.*browser-home/);
   assert.match(body, /exit "\$failed"/);
