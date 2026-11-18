@@ -28,8 +28,6 @@ import { listProcesses, readMemoryInfo, readStat } from './proc.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
-import { CycleService } from './development-cycle/service.mjs';
-import { cycleRoutes } from './development-cycle/http.mjs';
 import { liveStatus } from './refresh-status.mjs';
 import { roleModelsView } from './roles.mjs';
 import { routingView, saveFeedback } from './routing.mjs'; // Jev routing dashboard
@@ -2021,16 +2019,9 @@ let control = null;
 // family added later cannot forget it (the Skill Editor routes had none). Loopback names on this port, plus a
 // tailnet host the owner configured (control.json remote.host) or a proxy in AGENTGLIM_ALLOWED_HOSTS.
 const guardHost = makeHostGuard({ port: () => PORT, extraNames: () => [...envExtraHosts(), ...hostAliases(DATA), ...fileExtraHosts(DATA)()] });
-let cycleRoute;
 const dashboard = http.createServer(async (req, res) => {
   if (!guardHost(req, res)) return;
   const route = req.url.split('?')[0];
-  // Settings/read model only. Trusted SuperAgent workers install their own gated runner ports.
-  if (route === '/development-cycles' || route.startsWith('/development-cycles.') || route.startsWith('/api/development-cycles')) {
-    try { cycleRoute ||= cycleRoutes(new CycleService({ dataRoot: DATA })); if (!await cycleRoute(req, res, route)) { res.writeHead(404); res.end('not found'); } }
-    catch (e) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
-    return;
-  }
   if (route === '/api/prefs') return prefsRoute(req, res);
   if (route === '/theme.js' || route === '/theme.css') {
     res.writeHead(200, { 'content-type': route.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'cache-control': 'no-cache' });
