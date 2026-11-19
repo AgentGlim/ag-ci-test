@@ -23,13 +23,13 @@
 // npm shim (codex.cmd, ...) runs through cmd.exe with the prompt on stdin or as a file reference, never on the
 // command line (app/cli-spawn.mjs). A timeout kills the whole process tree (taskkill /T /F on Windows).
 // Windows: run it as `node <run>/bin/worker-launch.mjs ...`, or the .sh form from Git Bash.
-// jobs-track: AGENTGLIM_JOBS_TRACK (a jobs-track command), else jobs-track.py from this checkout via python3/python/py.
+// jobs-track: AGENTGLIM_JOBS_TRACK (a jobs-track command, including Windows shims), else the shipped Python tracker.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { spawnCli, killTree } from '../../app/cli-spawn.mjs';
+import { cliCommand, spawnCli, killTree } from '../../app/cli-spawn.mjs';
 
 const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 export const HARNESSES = ['codex', 'claude', 'pi', 'opencode'];
@@ -92,7 +92,11 @@ export function track(cmd, args, env = process.env, timeoutMs = 60000) {
     let out = '', errText = '', done = false;
     const finish = (v) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
     let p;
-    try { p = spawn(cmd[0], [...cmd.slice(1), ...args], { windowsHide: true, env, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try {
+      const command = cliCommand(cmd[0], [...cmd.slice(1), ...args], { env });
+      p = spawn(command.cmd, command.args, { windowsHide: true, env, stdio: ['ignore', 'pipe', 'pipe'],
+        ...(command.verbatim ? { windowsVerbatimArguments: true } : {}) });
+    }
     catch (e) { return resolve({ id: '', error: `jobs-track could not start (${cmd[0]}): ${e.message || e}` }); }
     const timer = setTimeout(() => { try { p.kill(); } catch {} finish({ id: '', error: `jobs-track took longer than ${Math.round(timeoutMs / 1000)} s` }); }, timeoutMs);
     p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { errText += d; });

@@ -44,15 +44,17 @@ for (const expectedExitCode of [0, 1]) {
       }
       const argv = termination === 'spawnError' ? [path.join(temp(t), 'missing-executable')] : node(scripts[termination]);
       const { result, row, gaps } = await execute(t, { argv, expectedExitCode, timeoutMs: termination === 'timeout' ? 100 : 5000 }, { signal: abort.signal });
+      // Windows reports a child killing itself with SIGTERM as a numeric exit.
+      const numericExit = termination === 'signal' && process.platform === 'win32';
       assert.equal(row.status, 'fail');
       assert.equal(row.legitimate, false);
-      assert.equal(row.environmentError, true);
-      assert.equal(row.exitCode, null, 'never synthesize exit code 1 from process errors');
-      assert.equal(row.process.completed, false);
-      assert.equal(row.process.termination, termination);
+      assert.equal(row.environmentError, !numericExit);
+      assert.equal(row.exitCode, numericExit ? 1 : null, 'never synthesize exit code 1 from process errors');
+      assert.equal(row.process.completed, numericExit);
+      assert.equal(row.process.termination, numericExit ? 'exited' : termination);
       assert.equal(result.exitCode, 1);
-      assert.equal(result.environmentError, true);
-      assert.equal(result.failureKind, 'environment');
+      assert.equal(result.environmentError, !numericExit);
+      assert.equal(result.failureKind, numericExit ? 'unclassified' : 'environment');
       assert.ok(gaps.includes('baseline: red is not an intended requirement failure'));
     });
   }

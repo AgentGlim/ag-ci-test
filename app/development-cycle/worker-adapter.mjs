@@ -179,8 +179,9 @@ export class SuperAgentWorkerAdapter {
   }
 }
 // Check commands are arrays configured by the host. No shell, no worker-authored command execution.
-const nodeReporter = fileURLToPath(new URL('./node-check-reporter.mjs', import.meta.url));
-const nodeRuntime = fileURLToPath(new URL('./node-check-runtime.mjs', import.meta.url));
+// The reporter and preload are ESM specifiers. A Windows drive path is parsed as a URL scheme.
+const nodeReporter = new URL('./node-check-reporter.mjs', import.meta.url).href;
+const nodeRuntime = new URL('./node-check-runtime.mjs', import.meta.url).href;
 const nodeBootstrap = fileURLToPath(new URL('./node-check-bootstrap.cjs', import.meta.url));
 function checkCommand(argv, env) {
   let node = false;
@@ -248,7 +249,11 @@ export function executeCommandChecks({ cwd, checks, validatorTests = [], signal,
   return Promise.all(checks.map(check => new Promise(resolve => {
     if (!Array.isArray(check.argv) || !check.argv.length || check.argv.some(x=>typeof x!=='string')) throw new Error('check argv required');
     const command = checkCommand(check.argv, check.env);
-    execFile(command.argv[0],command.argv.slice(1),{cwd,signal,timeout:check.timeoutMs||60000,maxBuffer:1048576,env:check.env || {PATH:process.env.PATH},windowsHide:true},(error,stdout,stderr)=>{
+    const child = execFile(command.argv[0],command.argv.slice(1),{cwd,signal,timeout:check.timeoutMs||60000,maxBuffer:1048576,env:check.env || {PATH:process.env.PATH},windowsHide:true},async(error,stdout,stderr)=>{
+      // On Windows the abort callback can arrive while the terminated child still holds the workspace open.
+      if (process.platform === 'win32' && error?.code === 'ABORT_ERR' && child.pid) {
+        await new Promise(done => child.once('close', done));
+      }
       const termination = error?.code === 'ABORT_ERR' || signal?.aborted ? 'aborted'
         : error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'maxBuffer'
         : error?.killed ? 'timeout' : error?.signal ? 'signal'
