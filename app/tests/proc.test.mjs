@@ -2,92 +2,81 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { listProcesses, parsePs, parseCim } from '../proc.mjs';
-import { readProcessStat, withProcessSnapshot } from '../proc.mjs';
+import { createWindowsProcessStats, readProcessStat } from '../proc.mjs';
 import { pidIdentity, workerState, livePopulation, snapshotPopulation } from '../live-workers.mjs';
 
-test('native start identities preserve macOS lstart and Windows FILETIME; PID reuse stays unknown', () => {
+test('macOS process identity preserves lstart and tolerates an unavailable process', () => {
   const mac = readProcessStat(42, null, { platform: 'darwin', run(command, args, options) {
     assert.equal(command, 'ps');
     assert.equal(options.env.LC_ALL, 'C');
     return ' S 1 42 Mon Nov 16 14:16:09 2026\n';
   } });
-  const win = readProcessStat(42, null, { platform: 'win32', run() {
-    return '134077761690000001\r\n';
-  } });
-  for (const start of [mac.starttime, win.starttime]) {
-    const job = { id: 'job', pid: 42, pidStart: start, status: 'running' };
-    assert.equal(pidIdentity(job), `pid:42:${start}`);
-    assert.equal(workerState(job, { isLive: () => true }), 'live');
-    assert.equal(workerState({ ...job, heartbeat: Date.now() }, { isLive: () => false }), 'unknown');
-    assert.equal(livePopulation({ tracked: [job], harness: [{ ...job, id: 'copy' }] }, { isLive: () => true }).counts.live, 1);
-  }
-  assert.notEqual(pidIdentity({ pid: 42, pidStart: win.starttime }), pidIdentity({ pid: 42, pidStart: '134077761690000002' }));
+  assert.equal(mac.starttime, 'Mon Nov 16 14:16:09 2026');
   assert.equal(readProcessStat(42, null, { platform: 'darwin', run: () => { throw Error('gone'); } }), null);
-  assert.equal(readProcessStat(42, null, { platform: 'win32', run: () => { throw Error('gone'); } }), null);
-  assert.equal(readProcessStat(42, '/missing-proc-fixture', { platform: 'darwin', run: () => assert.fail('fixture must win') }), null);
 });
 
-test('Windows snapshot reads each PID once, caches failed observations, and never retains identities', () => {
-  let calls = 0, start = '134077761690000001';
-  const run = (_command, args) => {
-    calls++;
-    const pid = Number(args.at(-1).match(/GetProcessById\((\d+)\)/)[1]);
-    if (pid === 43) throw new Error('gone');
-    return start + '\r\n';
-  };
-  const read = pid => readProcessStat(pid, null, { platform: 'win32', run });
-  withProcessSnapshot(() => {
-    for (let i = 0; i < 20; i++) {
-      assert.equal(read(42).starttime, start);
-      assert.equal(read(43), null);
-      withProcessSnapshot(() => assert.equal(read(42).starttime, start));
-    }
-    assert.equal(calls, 2, 'rows, counts and nested views share two observations');
-  });
-  start = '134077761690000002';
-  assert.equal(read(42).starttime, start, 'a later observation detects PID reuse');
-  assert.equal(calls, 3);
-  assert.throws(() => withProcessSnapshot(() => { read(42); throw Error('scan failed'); }), /scan failed/);
-  start = '134077761690000003';
-  assert.equal(read(42).starttime, start, 'a failed scan also releases its cache');
-  assert.equal(calls, 5);
-  withProcessSnapshot(() => assert.equal(readProcessStat(42, '/missing-proc-fixture', {
-    platform: 'win32', run: () => assert.fail('a fixture must never query the host'),
-  }), null));
-});
-
-test('Windows monitoring verifies queue generations without executable or cmdlet evidence', () => {
-  const start = '134394998952533759'; // More precision than a JavaScript Number can hold.
-  let queries = 0, current = start;
-  const read = () => readProcessStat(42, null, { platform: 'win32', run(command, args, options) {
-    queries++;
-    assert.equal(command, 'powershell.exe');
-    assert.ok(!/Get-Process|ConvertTo-Json|\.Path|MainModule/.test(args.at(-1)),
-      'monitoring cannot depend on module loading or executable access');
-    assert.equal(options.timeout, 5000);
-    return current;
+test('Windows batches identities asynchronously, shares pending work and clears a failed batch', async () => {
+  const calls = [];
+  const windows = createWindowsProcessStats({ run(command, args, options, done) {
+    calls.push({ command, args, options, done });
   } });
-  const job = { id: 'take', pid: 42, pidStart: start, pgid: 0, status: 'running',
+  const read = pid => readProcessStat(pid, null, { platform: 'win32', windows });
+  const first = windows.refresh();
+  assert.equal(windows.refresh(), first);
+  for (let pid = 42; pid < 62; pid++) assert.equal(read(pid), null);
+  assert.equal(calls.length, 1, 'reading distinct PIDs does not launch subprocesses');
+  assert.equal(calls[0].command, 'powershell.exe');
+  assert.match(calls[0].args.at(-1), /\[System\.Diagnostics\.Process\]::GetProcesses\(\)/);
+  assert.doesNotMatch(calls[0].args.at(-1), /Get-Process|ConvertTo-Json|GetProcessById|MainModule/);
+  assert.equal(calls[0].options.timeout, 5000);
+  assert.equal(calls[0].options.windowsHide, true);
+  calls[0].done(null, '42 134394998952533759\r\n43 134394998952533760\r\n44 1e17\r\n45 -1\r\n');
+  await first;
+  assert.equal(read(42).starttime, '134394998952533759');
+  assert.equal(read('43').starttime, '134394998952533760');
+  assert.equal(read(44), null);
+  assert.equal(read(45), null);
+  assert.equal(read(0), null);
+  assert.equal(readProcessStat(42, '/missing-proc-fixture', { platform: 'win32', windows }), null);
+
+  const second = windows.refresh();
+  assert.equal(read(43).starttime, '134394998952533760', 'readers see the last completed batch while refreshing');
+  calls[1].done(Object.assign(new Error('PowerShell timed out'), { killed: true }), '42 134394998952533760');
+  await second;
+  assert.equal(read(42), null, 'partial stdout from a timed out probe is discarded');
+  assert.equal(read(43), null, 'failure invalidates the old batch');
+
+  const third = windows.refresh();
+  calls[2].done(null, '42 134394998952533760\n');
+  await third;
+  assert.equal(read(42).starttime, '134394998952533760');
+  assert.equal(read(43), null, 'absent PIDs cannot survive a completed batch');
+});
+
+test('Windows worker liveness distinguishes PID generations one FILETIME tick apart', async () => {
+  const starttime = '134394998952533759';
+  let observed = starttime;
+  const windows = createWindowsProcessStats({ run(_command, _args, _options, done) {
+    done(null, `42 ${observed}\n`);
+  } });
+  const job = { id: 'take', pid: 42, pidStart: starttime, pgid: 0, status: 'running',
     project: 'SuperAgent', launcher: 'headless-take.sh', heartbeat: Date.now() };
   const board = () => ({ projects: [], otherRows: [], watcherRow: { tracked: [job], live: [{ ...job }] } });
-  const isLive = j => { const st = read(); return !!st && st.starttime === j.pidStart; };
+  const isLive = j => readProcessStat(j.pid, null, { platform: 'win32', windows })?.starttime === j.pidStart;
+
+  await windows.refresh();
   const snap = board();
-  withProcessSnapshot(() => {
-    assert.equal(snapshotPopulation(snap, { isLive }).counts.live, 1);
-    assert.equal(snap.watcherRow.agents.length, 1, 'tracked and live copies count once');
-    assert.equal(snap.watcherRow.agentsUnknown.length, 0);
-  });
-  assert.equal(queries, 1);
-  // Even a one-tick change must stay unknown; no rounding, PID-only or heartbeat rescue.
-  current = (BigInt(start) + 1n).toString();
-  withProcessSnapshot(() => {
-    const pop = snapshotPopulation(board(), { isLive });
-    assert.equal(pop.counts.live, 0);
-    assert.equal(pop.counts.unknown, 1);
-  });
-  for (current of ['', 'null', '0', '-1', '1.3439499895253376e17', '{"start":"123"}']) {
-    assert.equal(read(), null, 'invalid native output cannot verify a worker');
-  }
+  assert.equal(snapshotPopulation(snap, { isLive }).counts.live, 1);
+  assert.equal(snap.watcherRow.agents.length, 1, 'tracked and live copies count once');
+  assert.equal(livePopulation({ tracked: [job], harness: [{ ...job, id: 'copy' }] }, { isLive }).counts.live, 1);
+
+  observed = (BigInt(starttime) + 1n).toString();
+  await windows.refresh();
+  assert.notEqual(pidIdentity(job), pidIdentity({ ...job, pidStart: observed }));
+  assert.equal(workerState(job, { isLive }), 'unknown');
+  const population = snapshotPopulation(board(), { isLive });
+  assert.equal(population.counts.live, 0);
+  assert.equal(population.counts.unknown, 1);
 });
 
 test('ps parser reads state, parent, terminal and quoted arguments', () => {

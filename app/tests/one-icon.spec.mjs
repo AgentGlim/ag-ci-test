@@ -91,7 +91,7 @@ try {
   if (process.env.ONE_ICON_SHOT) await (await page.$('.subhd[data-p="t:77-widget-shop"]')).evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' })).then(() => page.screenshot({ path: process.env.ONE_ICON_SHOT }));
   assert.equal(r.projIcons, 2, `project row: one icon per running process ${JSON.stringify(r)}`);
   assert.equal(r.headIcons, 0, 'no icons on the summary line');
-  assert.match(r.headText, /2 running/);
+  assert.match(r.headText, /2 tracked running/);
   assert.equal(r.taskIcons, 0, 'no icons on sub-task rows');
   assert.equal(r.running, 2, 'both running sub-task rows shown');
   assert.equal(r.bars, 2, 'running sub-task rows keep their progress bar');

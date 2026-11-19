@@ -6,6 +6,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import net from 'node:net';
 import { archiveDirectory } from './helpers/archive-directory.mjs';
 import { waitForServerReady } from './helpers/server-ready.mjs';
@@ -50,7 +51,7 @@ function fixture(t) {
     }
     await archiveDirectory(home);
   });
-  const start = async (code, { profileOnly = false } = {}) => {
+  const start = async (code, { profileOnly = false, procFixture = true } = {}) => {
     const port = await fixturePort();
     child = spawn(process.execPath, ['--input-type=module', '-e', `
       import fs from 'node:fs';
@@ -67,16 +68,19 @@ function fixture(t) {
         ...(profileOnly ? {} : { HOME: home }), USERPROFILE: home,
         AGENTGLIM_ENV_FILE: path.join(home, 'env'), AGENTGLIM_CONFIG: path.join(home, 'harness.json'),
         AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_PLANS: path.join(home, 'plans'),
-        AGENTGLIM_PROJECTS: home, AGENTGLIM_PROC: path.join(home, 'proc'), AGENTGLIM_DEV: '1' },
+        AGENTGLIM_PROJECTS: home, ...(procFixture ? { AGENTGLIM_PROC: path.join(home, 'proc') } : {}), AGENTGLIM_DEV: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', () => {});
     const bound = await waitForServerReady(child, port);
-    const response = await fetch(`http://127.0.0.1:${bound}/api/snapshot`);
-    assert.equal(response.status, 200);
-    return { snapshot: await response.json(), output: () => output };
+    const readSnapshot = async () => {
+      const response = await fetch(`http://127.0.0.1:${bound}/api/snapshot`);
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    return { snapshot: await readSnapshot(), readSnapshot, output: () => output };
   };
   return { home, write, start };
 }
@@ -148,4 +152,58 @@ test('native-separator _build scan attributes worker metadata and totals to its 
   const plan = snapshot.projects.find(project => project.dir === '77-fixture');
   assert.equal(plan.tokens, 22, 'worker totals belong to its plan row');
   assert.equal(plan.tasks[0].model, worker.model, 'task rows match the worker by stage and task');
+});
+
+test('Windows startup and HTTP serve tracked PIDs while the single identity batch is pending', async t => {
+  const { home, write, start } = fixture(t);
+  const starttime = '134394998952533759', pids = [4242, 4343, 4444];
+  for (const pid of pids) {
+    write(`data/tracked-jobs/fixture-${pid}.json`, {
+      id: `fixture-${pid}`, project: 'fixture', pid, pidStart: starttime,
+      kind: 'one-on-one', status: 'running', started: Date.now(),
+    });
+  }
+  const releaseFile = path.join(home, 'release-probe');
+  const { snapshot, readSnapshot, output } = await start(`
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    const { default: cp } = await import('node:child_process');
+    const { syncBuiltinESMExports } = await import('node:module');
+    const { execFile, execFileSync } = cp;
+    cp.execFileSync = (command, ...args) => {
+      if (command === 'powershell.exe') {
+        console.log('SYNC_POWERSHELL');
+        throw Error('unexpected synchronous Windows monitoring');
+      }
+      return execFileSync(command, ...args);
+    };
+    cp.execFile = (command, args, options, done) => {
+      if (command !== 'powershell.exe') return execFile(command, args, options, done);
+      if (!args.at(-1).includes('GetProcesses()')) { queueMicrotask(() => done(null, '[]')); return; }
+      console.log('IDENTITY_BATCH');
+      const retry = setInterval(() => {
+        if (!fs.existsSync(${JSON.stringify(releaseFile)})) return;
+        clearInterval(retry);
+        done(null, ${JSON.stringify(pids.map(pid => pid + ' ' + starttime).join('\n'))});
+      }, 10);
+    };
+    syncBuiltinESMExports();
+  `, { procFixture: false });
+
+  assert.equal(snapshot.population.counts.live, 0);
+  assert.equal(snapshot.population.counts.unknown, pids.length);
+  assert.equal((await readSnapshot()).population.counts.unknown, pids.length);
+  assert.equal(output().match(/IDENTITY_BATCH/g)?.length, 1);
+
+  write('release-probe', '');
+  const deadline = Date.now() + 5000;
+  let counts;
+  do {
+    counts = (await readSnapshot()).population.counts;
+    if (counts.live === pids.length) break;
+    await delay(50);
+  } while (Date.now() < deadline);
+  assert.equal(counts.live, pids.length);
+  assert.equal(counts.unknown, 0);
+  assert.equal(output().match(/IDENTITY_BATCH/g)?.length, 1);
+  assert.doesNotMatch(output(), /SYNC_POWERSHELL/);
 });

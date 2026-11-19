@@ -67,7 +67,7 @@ test('Status card renders the script gate fields per provider and a save queues 
   if (!exe) { const c = path.join(os.homedir(), '.cache/ms-playwright'); const d = fs.existsSync(c) && fs.readdirSync(c).filter((x) => /^chromium-\d+/.test(x)).sort().pop(); if (d) exe = `${c}/${d}/chrome-linux64/chrome`; }
   // An empty /proc (bwrap emulation) or a sandboxed host kills Chromium before it reports ready:
   // that is an environment limit like a missing browser, so skip instead of failing the suite.
-  const browser = await chromium.launch({ executablePath: exe }).catch(() => null);
+  const browser = await chromium.launch({ executablePath: process.env.VMTEST_CHROME || exe }).catch(() => null);
   if (!browser) return t.skip('no launchable Chromium here (missing browser or no /proc)');
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

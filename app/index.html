@@ -175,6 +175,7 @@ a{color:inherit}
 .wrap{max-width:1480px;margin:0 auto;padding:20px 20px 60px}
 header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;margin-bottom:18px;background:var(--header-bg)}
 .hdr-r{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px 10px;margin-left:auto}
+.header-controls{display:inline-flex;align-items:center;gap:10px;flex:none}
 /* Skill Editor: its own top-level header button, tinted with --skills-accent (not a Pages menu item) */
 a.btn.skills-btn{color:var(--skills-accent);text-decoration:none;white-space:nowrap;border-color:color-mix(in srgb,var(--skills-accent) 45%,transparent);background:color-mix(in srgb,var(--skills-accent) 12%,var(--header-bg))}
 a.btn.skills-btn:hover,a.btn.skills-btn:focus-visible{border-color:var(--skills-accent);background:color-mix(in srgb,var(--skills-accent) 22%,var(--header-bg))}
@@ -683,6 +684,7 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
       <div id="updateNotice"></div>
       <div class="meta" id="updated">connecting...</div>
       <a class="btn skills-btn" id="skillsLink" href="/skills" target="_blank" rel="noopener" data-tip="Read and edit your installed skills">Skill Editor</a>
+      <a class="btn" href="/development-cycles" target="_blank" rel="noopener">Development cycles</a>
       <details class="pgmenu" id="pgMenu"><summary class="btn" aria-label="Open pages menu">Pages <span aria-hidden="true">&#9662;</span></summary>
       <nav class="pgm-list" role="menu">
         <a class="pgm-i" role="menuitem" href="/goals" target="_blank" rel="noopener" data-tip="Open the Goals app: alignment, asks by goal, the weekly review, rules and print to PDF">Goals</a>
@@ -697,11 +699,13 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
         </details>
       </nav></details>
       <a class="btn" id="setupBtn" href="/setup" target="_blank" rel="noopener" style="text-decoration:none;white-space:nowrap" data-tip="Setup: pick your harnesses, plans, free API keys, local models and custom projects. Only what you turn on is shown here.">Setup</a>
-      <button class="btn" id="tourBtn" type="button" aria-label="Start the tour" data-tip="Take a short tour of this page">?</button>
-      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
-        <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
-        <svg class="theme-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-      </button>
+      <span class="header-controls">
+        <button class="btn" id="tourBtn" type="button" aria-label="Start the tour" data-tip="Take a short tour of this page">?</button>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
+          <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+          <svg class="theme-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+      </span>
     </div>
   </header>
 

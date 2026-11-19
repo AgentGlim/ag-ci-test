@@ -65,3 +65,15 @@ test('dashboard renders stale running as a muted in progress chip; live jobs kee
   assert.doesNotMatch(idle, />running<\/span>/);
   assert.match(render([job()]), /--status-color:var\(--free\)[^>]*>running<\/span>/);
 });
+
+test('hyphenated folder names match complete token sequences and leave siblings idle', () => {
+  const siblings = [
+    {id: 'F23', folder: 'development-cycle-20261115', title: 'Cycle controller', status: 'running'},
+    {id: 'F24', folder: 'other-cycle-20261115', title: 'Other controller', status: 'running'},
+  ];
+  for (const label of ['Build development-cycle-20261115', 'Build DEVELOPMENT-CYCLE-20261115']) {
+    assert.deepEqual(liveStatus(siblings, plan, [job({label})]).map(i => i.status), ['running', 'in progress']);
+  }
+  // A longer identifier must not be mistaken for the first feature's folder.
+  assert.deepEqual(liveStatus(siblings, plan, [job({label: 'Build development-cycle-202611150 and F24'})]).map(i => i.status), ['in progress', 'running']);
+});

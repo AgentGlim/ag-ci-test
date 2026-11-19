@@ -24,10 +24,12 @@ import './env.mjs'; // first: API keys and settings from <repo>/.env (process en
 import { ENV_FILE, keyStatuses } from './env.mjs'; // Setup page shows where keys go
 import fs from 'node:fs';
 import os from 'node:os';
-import { listProcesses, readMemoryInfo, readStat, withProcessSnapshot } from './proc.mjs';
+import { listProcesses, readMemoryInfo, readStat, procRoot, refreshWindowsProcessStats } from './proc.mjs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import http from 'node:http';
+import { CycleService } from './development-cycle/service.mjs';
+import { cycleRoutes } from './development-cycle/http.mjs';
 import { liveStatus } from './refresh-status.mjs';
 import { roleModelsView } from './roles.mjs';
 import { routingView, saveFeedback } from './routing.mjs'; // Jev routing dashboard
@@ -1781,8 +1783,7 @@ setInterval(() => { try { others.scanSessions(); } catch (e) { console.error('ot
 
 // live, unfiltered state shared by every viewer; rebuilt every 5 s
 let lastHistory = 0;
-function scan() { return withProcessSnapshot(scanSnapshot); }
-function scanSnapshot() {
+function scan() {
   const state = JSON.parse(readText(`${RUN}/state.json`) || '{"projects":{}}');
   scanClaudeQueue();
   scanLive();
@@ -1899,8 +1900,7 @@ function subRecs(f) {
 }
 
 const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
-function view(base, f) { return withProcessSnapshot(() => viewSnapshot(base, f)); }
-function viewSnapshot(base, f) {
+function view(base, f) {
   const now = Date.now();
   const rs = [...recs.values()].filter((r) => f.inRange(r.t) && !f.excl.has(r.provider));
   const all_ = rs.concat(subRecs(f)); // + Codex and Claude subscription usage, priced as API estimates
@@ -1969,11 +1969,30 @@ function viewSnapshot(base, f) {
 }
 
 // ---------- http ----------
+const nativeWindowsProcessStats = process.platform === 'win32' && !procRoot();
 let base = scan();
+let pendingProcessScan;
+function refreshScan() {
+  if (!nativeWindowsProcessStats) {
+    base = scan();
+    return;
+  }
+  pendingProcessScan ??= refreshWindowsProcessStats().then(() => {
+    // Rebuild from the completed snapshot, including any tracked rows cached at startup.
+    tjCache.at = 0;
+    base = scan();
+  }).finally(() => { pendingProcessScan = null; });
+  return pendingProcessScan;
+}
+async function backgroundScan() {
+  try { await refreshScan(); } catch (e) { console.error('scan failed', e); }
+}
+// Serve the initial view while Windows collects identity evidence.
+if (nativeWindowsProcessStats) void backgroundScan();
 if (!DEV) setInterval(agyPriceRefresh, 24 * 3600e3); // Antigravity live prices, daily
 // CPU fix 2026-11-13: 30 s while a dashboard is open (pushes stay every 15 s), 60 s when nobody watches
 let lastScan = Date.now();
-setInterval(() => { if (Date.now() - lastScan < (clients.size ? 28000 : 58000)) return; lastScan = Date.now(); try { base = scan(); } catch (e) { console.error('scan failed', e); } }, 15000); // 15 s (was 5 s): desktop load
+setInterval(() => { if (Date.now() - lastScan < (clients.size ? 28000 : 58000)) return; lastScan = Date.now(); void backgroundScan(); }, 15000); // 15 s (was 5 s): desktop load
 // sub-item tidy: every 30 min, and once a minute after start, finished sub-items are archived in
 // data/subitems-archived.json (pure code, no AI call); the dashboard reads it from the snapshot and folds them away
 const archiveJob = () => { try { archiveRun({ groups: groupsOf(base), plans: base.projects || [] }); } catch (e) { console.error('[subitems-archive] failed:', e.message); } };
@@ -2021,9 +2040,16 @@ let control = null;
 // family added later cannot forget it (the Skill Editor routes had none). Loopback names on this port, plus a
 // tailnet host the owner configured (control.json remote.host) or a proxy in AGENTGLIM_ALLOWED_HOSTS.
 const guardHost = makeHostGuard({ port: () => PORT, extraNames: () => [...envExtraHosts(), ...hostAliases(DATA), ...fileExtraHosts(DATA)()] });
+let cycleRoute;
 const dashboard = http.createServer(async (req, res) => {
   if (!guardHost(req, res)) return;
   const route = req.url.split('?')[0];
+  // Settings/read model only. Trusted SuperAgent workers install their own gated runner ports.
+  if (route === '/development-cycles' || route.startsWith('/development-cycles.') || route.startsWith('/api/development-cycles')) {
+    try { cycleRoute ||= cycleRoutes(new CycleService({ dataRoot: DATA })); if (!await cycleRoute(req, res, route)) { res.writeHead(404); res.end('not found'); } }
+    catch (e) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
+    return;
+  }
   if (route === '/api/prefs') return prefsRoute(req, res);
   if (route === '/theme.js' || route === '/theme.css') {
     res.writeHead(200, { 'content-type': route.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8', 'cache-control': 'no-cache' });
@@ -2232,7 +2258,7 @@ const dashboard = http.createServer(async (req, res) => {
       // Refresh live data immediately; only the watcher may answer the queued request.
       try { syncGoals(); } catch (e) { console.error('goals sync failed', e.message); } // re-read the goals project
       await refreshClaudeUsage(true).catch(() => {}); // fresh Claude 5h/weekly for the top bar and Budget routing (2026-11-06)
-      base = scan();
+      await refreshScan();
       let digest = buildDigest(base);
       const status = liveStatus(digest, { stop: readText(`${RUN}/STOP`), modes: (() => { try { return JSON.parse(readText(`${RUN}/modes.json`)) || {}; } catch { return {}; } })() }); // modes.json is optional: absent on a fresh install
       const target = `${DATA}/status.json`;

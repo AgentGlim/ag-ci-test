@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import { RUN } from '../paths.mjs';
 
 const APP = path.resolve(import.meta.dirname, '..');
@@ -54,7 +55,16 @@ test('headless-take jobs: NN-slug__stage under its plan with stage + model; obse
     fs.rmSync(home, { recursive: true, force: true });
   });
   const port = await waitForServerReady(child);
-  const s = await (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json();
+  const snapshot = async () => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json();
+  let s = await snapshot();
+  // Windows publishes the initial view while its native process batch runs.
+  if (process.platform === 'win32') {
+    const deadline = Date.now() + 8000;
+    while (s.watcherRow?.running !== 1 && Date.now() < deadline) {
+      await delay(100);
+      s = await snapshot();
+    }
+  }
   assert.ok(s?.projects, `isolated server gave no snapshot: ${errors}`);
   const p66 = s.projects.find((p) => p.dir === '66-fake-bench');
   assert.ok(p66.liveBuild, 'a plan in a live driver stage is an Active builds row');

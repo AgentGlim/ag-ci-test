@@ -37,7 +37,7 @@ jobs:
           export HOME="$RUNNER_TEMP/browser-home" USERPROFILE="$RUNNER_TEMP/browser-home"
           export TMPDIR="$RUNNER_TEMP/browser-tmp" TEMP="$RUNNER_TEMP/browser-tmp" TMP="$RUNNER_TEMP/browser-tmp"
           failed=0
-          for spec in skills-editor-xss send-to-agent inbox-resend setup-budget; do
+          for spec in skills-editor-xss send-to-agent inbox-resend setup-budget development-cycle; do
             log="$RUNNER_TEMP/browser-smoke/$spec.log"
             if timeout --kill-after=10s 120s node "app/tests/$spec.spec.mjs" > "$log" 2>&1; then
               echo "PASS: $spec"

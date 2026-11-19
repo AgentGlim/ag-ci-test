@@ -291,7 +291,7 @@ test('npm run update pulls main (fast-forward only) and re-links the run folder 
 test('one update method in the docs, no placeholder clone URL, no owner notes in the public AGENTS.md', () => {
   const install = readDoc('public-docs/install.md'), readme = read('README.md'), setup = read('SETUP.md');
   // Private checkout keeps owner learnings in its own AGENTS.md; public.txt exports this clean template.
-  const agents = fs.existsSync(path.join(REPO, 'public.txt')) ? readDoc('public-docs/AGENTS.md') : read('AGENTS.md');
+  const agents = fs.existsSync(path.join(REPO, 'public-docs/AGENTS.md')) ? readDoc('public-docs/AGENTS.md') : read('AGENTS.md');
   assert.match(install, /git clone https:\/\/github\.com\/AgentGlim\/agentglim\.git/);
   assert.doesNotMatch(install, /<you>/, 'no placeholder clone URL');
   assert.match(install, /Linux, macOS and Windows/, 'the platforms it actually runs on');

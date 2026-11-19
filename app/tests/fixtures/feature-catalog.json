@@ -1,0 +1,100 @@
+{
+  "about": "Feature numbers are never reused; use max F-number + 1; F17 stays unused.",
+  "features": [
+    {
+      "id": "F01",
+      "title": "Fixture feature 1",
+      "folder": "fixture-feature-1"
+    },
+    {
+      "id": "F02",
+      "title": "Fixture feature 2",
+      "folder": "fixture-feature-2"
+    },
+    {
+      "id": "F03",
+      "title": "Fixture feature 3",
+      "folder": "fixture-feature-3"
+    },
+    {
+      "id": "F04",
+      "title": "Fixture feature 4",
+      "folder": "fixture-feature-4"
+    },
+    {
+      "id": "F05",
+      "title": "Fixture feature 5",
+      "folder": "fixture-feature-5"
+    },
+    {
+      "id": "F06",
+      "title": "Fixture feature 6",
+      "folder": "fixture-feature-6"
+    },
+    {
+      "id": "F07",
+      "title": "Fixture feature 7",
+      "folder": "fixture-feature-7"
+    },
+    {
+      "id": "F08",
+      "title": "Fixture feature 8",
+      "folder": "fixture-feature-8"
+    },
+    {
+      "id": "F09",
+      "title": "Fixture feature 9",
+      "folder": "fixture-feature-9"
+    },
+    {
+      "id": "F10",
+      "title": "Fixture feature 10",
+      "folder": "fixture-feature-10"
+    },
+    {
+      "id": "F11",
+      "title": "Fixture feature 11",
+      "folder": "fixture-feature-11"
+    },
+    {
+      "id": "F12",
+      "title": "Fixture feature 12",
+      "folder": "fixture-feature-12"
+    },
+    {
+      "id": "F13",
+      "title": "Fixture feature 13",
+      "folder": "fixture-feature-13"
+    },
+    {
+      "id": "F14",
+      "title": "Fixture feature 14",
+      "folder": "fixture-feature-14"
+    },
+    {
+      "id": "F15",
+      "title": "Fixture feature 15",
+      "folder": "fixture-feature-15"
+    },
+    {
+      "id": "F16",
+      "title": "Fixture feature 16",
+      "folder": "fixture-feature-16"
+    },
+    {
+      "id": "F18",
+      "title": "Fixture feature 18",
+      "folder": "fixture-feature-18"
+    },
+    {
+      "id": "F19",
+      "title": "Fixture feature 19",
+      "folder": "fixture-feature-19"
+    },
+    {
+      "id": "F20",
+      "title": "Fixture feature 20",
+      "folder": "fixture-feature-20"
+    }
+  ]
+}

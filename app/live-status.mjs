@@ -8,7 +8,11 @@ function mentions(job, item) {
   const ids = [item.folder, item.id].filter((v) => v != null).map((v) => String(v).toLowerCase());
   if (!ids.length) return false;
   const jobWords = words(`${job.label || ''} ${job.note || ''}`);
-  return ids.some((id) => jobWords.some((w) => w === id || (/^\d+$/.test(id) && /^\d+$/.test(w) && Number(w) === Number(id))));
+  return ids.some((id) => {
+    const tokens = words(id);
+    if (tokens.length > 1) return text.includes(` ${tokens.join(' ')} `);
+    return jobWords.some((w) => w === id || (/^\d+$/.test(id) && /^\d+$/.test(w) && Number(w) === Number(id)));
+  });
 }
 
 // Prefer the sub-items named by each job. A job naming none of them backs the whole plan.

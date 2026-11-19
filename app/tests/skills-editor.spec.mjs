@@ -173,7 +173,7 @@ try {
   // Skill Editor is its own top-level header button now, not a Pages menu item: no menu needed, visible at once.
   assert.equal(await page.$$eval('#pgMenu #skillsLink', (els) => els.length), 0, 'the Skill Editor link left the Pages menu');
   assert.equal(await page.$$eval('header .hdr-r > a#skillsLink', (els) => els.length), 1, 'Skill Editor is a top-level header button');
-  assert.equal(await page.$$eval('header .hdr-r > #themeToggle', (els) => els.length), 1, 'theme button lives in the header control group');
+  assert.equal(await page.$$eval('header .hdr-r #themeToggle', (els) => els.length), 1, 'theme button lives in the header control group');
   assert.ok(await page.locator('#skillsLink').isVisible(), 'the header Skill Editor button is visible without opening anything');
   assert.equal(await page.textContent('#skillsLink'), 'Skill Editor');
   await ready(page); await isTheme(page, 'dark');

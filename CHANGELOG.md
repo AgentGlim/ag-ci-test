@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.2.21
+## 0.2.22
 
 - F23 Development cycle: opt-in coding loops with protected evidence, independent validation, budgets and recovery.
+- Protected test execution supports Node 22.13+ on 22.x and Node 24.x while retaining assertion and evidence checks.
+- CI includes the development-cycle browser check; mobile header controls stay together.
+- Windows batches process identities in the background so PowerShell startup does not stall the dashboard.
+- Clean-checkout fixtures cover feature numbering, public documentation and plan folder matching.
+
+## 0.2.21
+
 - F31 Live-worker liveness: verified process and lineage evidence distinguish live workers, unknown registrations and saved history.
 - F36 Standardized build intake: versioned defaults, seven answer rounds, role recommendations and tracked dispatch receipts.
 - F42 Fast VM test: ready snapshots, agentless install/update checks, smart change scope and parallel local CI.

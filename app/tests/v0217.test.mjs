@@ -118,7 +118,7 @@ test('auditq-wait.mjs (native Windows listener) prints the same wake-ups as audi
   const plans = tmp(), run = path.join(plans, '_run');
   for (const d of ['audit_queue', 'chat_inbox', 'status_ask', 'owner_check', 'watchdog_queue', 'heartbeats', 'bin']) fs.mkdirSync(path.join(run, d), { recursive: true });
   const L = path.join(ROOT, 'harness', 'bin', 'auditq-wait.mjs');
-  const go = () => spawnSync(process.execPath, [L], { env: { ...process.env, AGENTGLIM_RUN: run, AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8', timeout: 20e3 });
+  const go = () => spawnSync(process.execPath, [L], { env: { ...process.env, AGENTGLIM_RUN: run, AGENTGLIM_PLANS: plans, AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8', timeout: 20e3 });
   let r = go(); assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout.trim(), 'NONE (re-arm)');
   assert.ok(fs.existsSync(path.join(run, 'heartbeats', 'auditq-wait'))); assert.ok(fs.existsSync(path.join(run, 'audit_queue', '.alive')));
   fs.writeFileSync(path.join(run, 'chat_inbox', '123.json'), '{}');

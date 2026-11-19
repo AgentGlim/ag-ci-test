@@ -33,38 +33,67 @@ export function readStat(pid, root = procRoot()) {
     pgid: Number(rest[2]), tty: Number(rest[4]), starttime: Number(rest[19]), raw };
 }
 
-// One scan can ask about the same PID through tracking, row icons and global
-// counts. Share its observation, including failures, within that synchronous scan.
-// Never retain it between scans or use it for the guarded stop operation.
-let processSnapshot = null;
-export function withProcessSnapshot(read) {
-  if (processSnapshot) return read();
-  processSnapshot = new Map();
-  try { return read(); } finally { processSnapshot = null; }
-}
-
-// Match jobs-track's native start identity without converting FILETIME to a lossy Number.
-// A fixture root always wins; an absent fixture pid must never consult the real host.
-export function readProcessStat(pid, root = procRoot(), { platform = process.platform, run = execFileSync } = {}) {
-  if (root) return readStat(pid, root);
-  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return null;
-  if (platform === 'win32') {
-    const key = Number(pid);
-    if (processSnapshot?.has(key)) return processSnapshot.get(key);
-    // Monitoring needs only the process generation. Get-Process/ConvertTo-Json
-    // load PowerShell modules on a cold host, and the control probe also requires
-    // an executable path. Neither belongs in this bounded, read-only stat query.
-    // Use the core .NET API and keep FILETIME as text, just like jobs-track.
-    let stat = null;
-    try {
-      const start = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `$p=[System.Diagnostics.Process]::GetProcessById(${key}); try { if ($p.HasExited) { exit 1 }; $p.StartTime.ToFileTimeUtc().ToString([System.Globalization.CultureInfo]::InvariantCulture) } finally { $p.Dispose() }`],
-      { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim();
-      if (/^[1-9]\d*$/.test(start)) stat = { pid: key, state: 'S', starttime: start };
-    } catch { /* exited, inaccessible or timed out: no verified process */ }
-    processSnapshot?.set(key, stat);
-    return stat;
+// Monitor every accessible PID in one PowerShell process. Use .NET's full
+// FILETIME as text to match jobs-track without rounding start times.
+// The stop path uses its own fresh, executable-aware identity check.
+const WINDOWS_PROCESS_STATS = `
+$ErrorActionPreference = 'Stop'
+foreach ($process in [System.Diagnostics.Process]::GetProcesses()) {
+  try {
+    if (!$process.HasExited) {
+      $start = $process.StartTime.ToFileTimeUtc().ToString([System.Globalization.CultureInfo]::InvariantCulture)
+      [Console]::WriteLine(('{0} {1}' -f $process.Id, $start))
+    }
+  } catch {
+    # The process exited or its start time is inaccessible.
+  } finally {
+    $process.Dispose()
   }
+}
+`;
+
+export function createWindowsProcessStats({ run = execFile } = {}) {
+  let snapshot = new Map(), pending;
+  return {
+    read(pid) { return snapshot.get(pid) ?? null; },
+    refresh() {
+      if (pending) return pending;
+      pending = new Promise((resolve) => {
+        const done = (error, output = '') => {
+          const stats = new Map();
+          if (!error) {
+            for (const line of output.split(/\r?\n/)) {
+              const match = /^([1-9]\d*) ([1-9]\d*)$/.exec(line);
+              if (!match) continue;
+              const pid = Number(match[1]);
+              if (Number.isSafeInteger(pid)) stats.set(pid, { pid, state: 'S', starttime: match[2] });
+            }
+          }
+          resolve(stats);
+        };
+        try {
+          run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_PROCESS_STATS],
+            { encoding: 'utf8', timeout: 5000, windowsHide: true }, done);
+        } catch (error) { done(error); }
+      }).then((stats) => {
+        snapshot = stats;
+        pending = null;
+      });
+      return pending;
+    },
+  };
+}
+const windowsProcessStats = createWindowsProcessStats();
+export const refreshWindowsProcessStats = () => windowsProcessStats.refresh();
+
+// A fixture root always wins; an absent fixture pid must never consult the real host.
+export function readProcessStat(pid, root = procRoot(), {
+  platform = process.platform, run = execFileSync, windows = windowsProcessStats,
+} = {}) {
+  if (root) return readStat(pid, root);
+  const key = Number(pid);
+  if (!Number.isInteger(key) || key <= 0) return null;
+  if (platform === 'win32') return windows.read(key);
   if (platform === 'darwin') {
     try {
       const fields = run('ps', ['-p', String(pid), '-o', 'stat=,ppid=,pgid=,lstart='], {
