@@ -239,6 +239,30 @@ test('EVD-04: required inventories fail closed when absent, malformed or duplica
     assert.ok(row.executionGaps.length);
   }
 });
+test('EVD-04: required cases and file summaries use the same physical path', async t => {
+  const root = temp(t), cwd = path.join(root, 'alias');
+  const physical = path.join(root, 'checks');
+  fs.mkdirSync(physical);
+  fs.symlinkSync(physical, cwd, process.platform === 'win32' ? 'junction' : 'dir');
+  const source = "import test from 'node:test'; test('required behavior',()=>{});";
+  const file = 'requirement.test.mjs';
+  fs.writeFileSync(path.join(physical, file), source);
+  fs.writeFileSync(path.join(physical, 'other.test.mjs'), source);
+  const required = { file, name: 'required behavior' };
+  const contract = run().contract;
+  const check = (id, entry, requiredTests = [required]) => ({
+    id, argv: [process.execPath, '--test', path.join(cwd, entry)], requiredTests,
+  });
+  const { checks: [sameFile, otherFile, duplicate] } = await executeCommandChecks({
+    cwd, stage: 'checking', contract,
+    checks: [check('same', file), check('other', 'other.test.mjs'),
+      check('duplicate', file, [required, { ...required, file: path.join(physical, file) }])],
+  });
+  assert.equal(sameFile.status, 'pass');
+  assert.equal(otherFile.environmentError, true);
+  assert.match(otherFile.executionGaps[0], /file did not finish/);
+  assert.deepEqual(duplicate.executionGaps, ['duplicate required test identity']);
+});
 test('EVD-04: a synthetic file wrapper cannot satisfy an identically named required case', async t => {
   const argv = nodeTest(t, 'process.exit(0);');
   const file = argv.at(-1);

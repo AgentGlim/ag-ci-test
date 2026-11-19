@@ -12,7 +12,21 @@ import { tokenUsageReceipt, cumulativeUsageSnapshot } from './telemetry.mjs';
 export const ROLES = Object.freeze({ failureAnalysis: 'analyst', testAuthoring: 'testAuthor', testReview: 'testReviewer', baseline: 'checker', implementation: 'builder', repair: 'builder', checking: 'checker', audit: 'auditor', freshValidation: 'validator', adversarial: 'validator', boundaryFaults: 'validator', extraReview: 'extraReviewer' });
 const EDITORS = new Set(['implementation', 'repair']);
 const stageChecks = (checks, stage) => checks.filter(c => c.stages ? c.stages.includes(stage) : !['failureAnalysis','testAuthoring','testReview'].includes(stage));
-const within = (root, file) => file === root || file.startsWith(root + path.sep);
+function within(root, file) {
+  const relative = path.relative(root, file);
+  return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+}
+// Role and evidence roots can be new. Resolve existing ancestors before checking
+// separation, so aliases of an existing tree cannot hide an overlap.
+function plannedRoot(dir) {
+  const absolute = path.resolve(dir);
+  try { return fs.realpathSync.native(absolute); }
+  catch (error) {
+    const parent = path.dirname(absolute);
+    if (error.code !== 'ENOENT' || parent === absolute || fs.lstatSync(absolute, { throwIfNoEntry: false })) throw error;
+    return path.join(plannedRoot(parent), path.basename(absolute));
+  }
+}
 export function manifest(root, { exclude = [] } = {}) {
   const entries = [];
   const walk = dir => {
@@ -43,7 +57,9 @@ export function createSealer(key = crypto.randomBytes(32)) {
 // Live installation must supply the existing host route/guard and isolation ports. No permissive fallback.
 export class SuperAgentWorkerAdapter {
   constructor({ sourceRoot, workspaceRoot, evidenceRoot, checks, testPaths, testBundle = null, verifyTestBundle = () => false, launchWorker = launch, admitLaunch, isolate, executeChecks, observeUsage = null, clock = Date.now, sealer = createSealer(), fixture = false }) {
-    this.sourceRoot = fs.realpathSync(sourceRoot); this.workspaceRoot = path.resolve(workspaceRoot); this.evidenceRoot = path.resolve(evidenceRoot);
+    this.sourceRoot = fs.realpathSync.native(sourceRoot);
+    this.workspaceRoot = plannedRoot(workspaceRoot);
+    this.evidenceRoot = plannedRoot(evidenceRoot);
     requireSeparate(this.sourceRoot,this.workspaceRoot); requireSeparate(this.sourceRoot,this.evidenceRoot); requireSeparate(this.workspaceRoot,this.evidenceRoot);
     if (!checks?.length || !testPaths?.length || typeof admitLaunch !== 'function' || typeof isolate !== 'function' || typeof executeChecks !== 'function') throw new Error('trusted checks, launch admission and isolation ports required');
     if (testPaths.some(p => path.isAbsolute(p) || p.split(/[\\/]/).includes('..'))) throw new Error('unsafe test path');
@@ -221,18 +237,37 @@ function runnerResult(stdout) {
     return result;
   } catch { return null; }
 }
-// The host supplies this inventory from the reviewed test bundle, never by learning
-// whatever a candidate happened to execute. Names must be unique within each file.
-function executionGaps(cwd, requiredTests, runner) {
+function testPathsAt(cwd) {
+  const paths = new Map();
+  return file => {
+    const absolute = path.resolve(cwd, file);
+    if (!paths.has(absolute)) {
+      let physical = null;
+      try { physical = fs.realpathSync.native(absolute); } catch { /* Unresolvable files cannot supply evidence. */ }
+      paths.set(absolute, physical);
+    }
+    return paths.get(absolute);
+  };
+}
+// The host supplies this inventory from the reviewed test bundle before launch.
+function plannedTests(cwd, requiredTests) {
   if (!Array.isArray(requiredTests) || !requiredTests.length || requiredTests.some(t =>
-    !t || typeof t.file !== 'string' || !t.file || typeof t.name !== 'string' || !t.name.trim())) return ['required test inventory absent or invalid'];
-  const identity = t => canonical([path.resolve(cwd, t.file), t.name]);
-  const expected = requiredTests.map(identity);
-  if (new Set(expected).size !== expected.length) return ['duplicate required test identity'];
-  return requiredTests.flatMap(t => {
-    const summaries = (runner?.files || []).filter(f => path.resolve(cwd, f.file) === path.resolve(cwd, t.file));
+    !t || typeof t.file !== 'string' || !t.file || typeof t.name !== 'string' || !t.name.trim())) return null;
+  const testPath = testPathsAt(cwd);
+  return requiredTests.map(t => ({ ...t, physical: testPath(t.file) }));
+}
+function executionGaps(cwd, expected, runner) {
+  if (!expected) return ['required test inventory absent or invalid'];
+  const identities = expected.map(t => canonical([t.physical || path.resolve(cwd, t.file), t.name]));
+  if (new Set(identities).size !== identities.length) return ['duplicate required test identity'];
+  // Node can report the CLI spelling in the file summary and the physical
+  // module path in the test case. Both must identify the reviewed file.
+  const testPath = testPathsAt(cwd);
+  return expected.flatMap(t => {
+    const summaries = t.physical && testPath(t.file) === t.physical
+      ? (runner?.files || []).filter(f => testPath(f.file) === t.physical) : [];
     if (summaries.length !== 1) return [`required test file did not finish: ${t.file}`];
-    const matches = (runner?.cases || []).filter(c => identity(c) === identity(t));
+    const matches = (runner?.cases || []).filter(c => c.name === t.name && testPath(c.file) === t.physical);
     return matches.length === 1 && ['pass', 'fail'].includes(matches[0].status) ? [] : [`required test did not complete: ${t.file}: ${t.name}`];
   });
 }
@@ -249,6 +284,7 @@ export function executeCommandChecks({ cwd, checks, validatorTests = [], signal,
   return Promise.all(checks.map(check => new Promise(resolve => {
     if (!Array.isArray(check.argv) || !check.argv.length || check.argv.some(x=>typeof x!=='string')) throw new Error('check argv required');
     const command = checkCommand(check.argv, check.env);
+    const expected = command.structured ? plannedTests(cwd, check.requiredTests) : null;
     const child = execFile(command.argv[0],command.argv.slice(1),{cwd,signal,timeout:check.timeoutMs||60000,maxBuffer:1048576,env:check.env || {PATH:process.env.PATH},windowsHide:true},async(error,stdout,stderr)=>{
       // On Windows the abort callback can arrive while the terminated child still holds the workspace open.
       if (process.platform === 'win32' && error?.code === 'ABORT_ERR' && child.pid) {
@@ -261,7 +297,7 @@ export function executeCommandChecks({ cwd, checks, validatorTests = [], signal,
       const completed = termination === 'exited';
       const actual = completed ? error ? error.code : 0 : null;
       const runner = command.structured && completed ? runnerResult(stdout) : null;
-      const missingTests = command.structured ? executionGaps(cwd, check.requiredTests, runner) : [];
+      const missingTests = command.structured ? executionGaps(cwd, expected, runner) : [];
       const runnerError = command.structured && (!runner || missingTests.length > 0 || runner.infrastructure > 0 || !runner.cases.some(c => ['pass','fail'].includes(c.status)) || (actual === 0 ? !runner.summary.success || runner.summary.counts.failed !== 0 : runner.summary.success || runner.summary.counts.failed < 1));
       const environmentError = !completed || !!runnerError;
       const requirementFailure = !environmentError && actual !== 0 && !!(runner?.assertions > 0);
