@@ -4,7 +4,7 @@ import { publish, validateRelease, checkDraft } from '../publish-release.mjs';
 
 const sha = 'a'.repeat(40);
 const tag = 'v1.2.3';
-const release = () => ({ id: 42, tag_name: tag, draft: true, assets: ['app.deb', 'app.AppImage', 'app.dmg', 'app-setup.exe', 'app.msi'].map(name => ({ name, state: 'uploaded', size: 100 })) });
+const release = () => ({ id: 42, tag_name: tag, draft: true, assets: ['app.deb', 'app.AppImage', 'app.dmg'].map(name => ({ name, state: 'uploaded', size: 100 })) });
 const fixture = () => ({ release: release(), tag, sha, currentSha: sha });
 const env = () => ({ GITHUB_EVENT_NAME: 'push', GITHUB_REF_TYPE: 'tag', GITHUB_REF: `refs/tags/${tag}`, GITHUB_REF_NAME: tag, GITHUB_SHA: sha, GITHUB_REPOSITORY: 'example/fixture', GH_TOKEN: 'fixture-token' });
 
@@ -27,13 +27,20 @@ test('preflight accepts a missing release or existing draft, but never a publish
 test('complete draft for the verified tag is accepted', () => {
   assert.doesNotThrow(() => validateRelease(fixture()));
 });
-for (const extension of ['.deb', '.AppImage', '.dmg', '-setup.exe', '.msi']) {
+for (const extension of ['.deb', '.AppImage', '.dmg']) {
   test(`missing ${extension} blocks publishing`, () => {
     const f = fixture();
     f.release.assets = f.release.assets.filter(a => !a.name.endsWith(extension));
     assert.throws(() => validateRelease(f), /Missing a complete installer/);
   });
 }
+test('a reused draft with a Windows installer blocks publishing', () => {
+  for (const name of ['AgentGlim-setup.EXE', 'AgentGlim.msi']) {
+    const f = fixture();
+    f.release.assets.push({ name, state: 'uploaded', size: 100 });
+    assert.throws(() => validateRelease(f), /draft contains a Windows installer/);
+  }
+});
 test('empty or incomplete uploads block publishing', () => {
   for (const bad of [{ size: 0 }, { state: 'new' }]) {
     const f = fixture(); Object.assign(f.release.assets[0], bad);

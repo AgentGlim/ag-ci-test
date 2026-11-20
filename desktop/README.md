@@ -10,7 +10,7 @@ resources; Node.js is installed separately. No npm install is needed.
 - System Node.js **22 or newer**: https://nodejs.org/en/download
 - Linux: WebKitGTK 4.1 development libraries and a graphical desktop session.
 - macOS: Xcode command line tools.
-- Windows: Visual Studio C++ build tools and WebView2.
+- Windows (unsupported local builds): Visual Studio C++ build tools and WebView2.
 
 Linux prerequisites (run yourself if missing; the build does not use sudo):
 
@@ -49,7 +49,7 @@ desktop/target/release/bundle/deb/AgentGlim_0.1.0_amd64.deb
 desktop/target/release/bundle/appimage/AgentGlim_0.1.0_amd64.AppImage
 ```
 
-On macOS use `--bundles dmg`; on Windows use `--bundles nsis,msi` (before `-- --locked`).
+On macOS use `--bundles dmg` before `-- --locked`.
 These installers are unsigned; signing and notarization are not configured.
 Node.js 22+ is required at runtime; the Debian package does not require a
 distribution Node package. Both DEB and AppImage support user-installed Node.
@@ -137,10 +137,9 @@ to confirm that server survives the window closing.
 
 ## GitHub releases
 
-`.github/workflows/desktop.yml` builds Linux DEB/AppImage, macOS DMG and
-Windows NSIS/MSI installers and uploads them to the GitHub Release when a
+`.github/workflows/desktop.yml` builds Linux DEB/AppImage and macOS DMG installers and uploads them to the GitHub Release when a
 `v*` tag is pushed. Set the version in both `Cargo.toml` and
-`tauri.conf.json` before tagging. The workflow does not run on ordinary pushes.
+`tauri.conf.json` before tagging. The workflow does not run on ordinary pushes. Windows is unsupported for now (weekly CI only).
 
 CI uses the prebuilt `@tauri-apps/cli@2.12.4` npm package through `npx`, rather
 than compiling the CLI with `cargo install`. The application still builds with
@@ -153,7 +152,7 @@ Tag releases call the complete CI workflow on the tagged commit, including the
 browser smoke lane. A preflight refuses to upload to an already-published
 release. Installer builds upload to a draft; the Linux cell then runs the native
 window/server-lifecycle smoke with Xvfb. The final publisher requires every
-platform to pass, verifies all five installer formats and checks that the tag
+platform to pass, verifies all three installer formats and checks that the tag
 still names the tested commit before making the draft public. A failed check
 leaves a draft, not a published release. Same-tag runs do not cancel a release
 that is already in progress.
@@ -173,6 +172,5 @@ data or staged server resources. The warmer does not run the desktop smoke, so
 smoke runtime data never enters a saved cache. Tags restore only.
 
 No automatic warm-up schedule is enabled. Measure warm-up cost and a subsequent
-release before claiming a saving. Ordinary pull requests retain all existing
-Node/Python/platform combinations. Native macOS/Windows launch testing and the
+release before claiming a saving. Ordinary pull requests test Linux and macOS. Native macOS/Windows launch testing and the
 remaining standalone browser specs are separate follow-up work.

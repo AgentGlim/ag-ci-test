@@ -1,5 +1,7 @@
 # Setting up AgentGlim
 
+Linux and macOS are supported. Windows is unsupported for now (weekly CI only).
+
 Quick setup is the default and should take under a minute. Supported runtimes: Node 22.13-24, Python 3.11+.
 Node 22.13.0 or newer is required; Python is needed only for Python utilities. Other add-ons are optional.
 
@@ -55,7 +57,7 @@ with the request on stdin. `AGENTGLIM_SEND_CODEX_ARGS` / `AGENTGLIM_SEND_CLAUDE_
 or tool permissions. `AGENTGLIM_SEND_PI_ARGS` / `AGENTGLIM_SEND_OPENCODE_ARGS` add arguments; Pi and OpenCode get the
 request as a file reference.
 
-Windows: run the worker launcher as `node <run>/bin/worker-launch.mjs ...` (or `bash <run>/bin/worker-launch.sh` from Git
+On unsupported Windows installations, run the worker launcher as `node <run>/bin/worker-launch.mjs ...` (or `bash <run>/bin/worker-launch.sh` from Git
 Bash). npm-installed CLIs (`codex.cmd`, `pi.cmd`, ...) are started through `cmd.exe` with the prompt on stdin or as a
 file reference, never on the command line. Worker tracking needs Python 3 (`python3`, `python` or `py`); without it
 workers run but do not show in the dashboard, and the launcher and doctor say so.

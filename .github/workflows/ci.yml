@@ -26,19 +26,6 @@ jobs:
           git ls-files > "$RUNNER_TEMP/list.txt"
           node dev/leak-scan.mjs . --public "$RUNNER_TEMP/list.txt" --env /dev/null
 
-  powershell-fixtures:
-    name: PowerShell fixtures (5.1 and pwsh)
-    runs-on: windows-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-      - name: Windows PowerShell 5.1 fixtures
-        shell: powershell
-        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '5.1.'
-      - name: PowerShell 7 fixtures
-        shell: pwsh
-        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '7.'
-
   tests:
     name: tests (${{ matrix.os }}, Node ${{ matrix.node }}, Python ${{ matrix.python }})
     needs: privacy
@@ -53,12 +40,6 @@ jobs:
             node: '22.13.0'
             python: '3.11'
           - os: macos-latest
-            node: '24.x'
-            python: '3.15-dev'
-          - os: windows-latest
-            node: '22.13.0'
-            python: '3.11'
-          - os: windows-latest
             node: '24.x'
             python: '3.15-dev'
     runs-on: ${{ matrix.os }}
@@ -96,14 +77,14 @@ jobs:
     uses: ./.github/workflows/browser.yml
 
   # The published copy as a user gets it: a fresh clone in another folder, a stamped release version (not "dev"),
-  # an isolated HOME and TMPDIR, on macOS and Windows where path and process differences show up.
+  # an isolated HOME and TMPDIR on macOS, where path and process differences show up.
   published-copy:
     name: published copy (${{ matrix.os }})
     needs: privacy
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -128,7 +109,27 @@ jobs:
           cd "$RUNNER_TEMP/published"
           HOME="$RUNNER_TEMP/home" USERPROFILE="$RUNNER_TEMP/home" TMPDIR="$RUNNER_TEMP/tmp" TEMP="$RUNNER_TEMP/tmp" TMP="$RUNNER_TEMP/tmp" CI=true npm test
 
-  # Compile and bundle all desktop platforms before a tag is pushed. No release uploads.
+  install-update:
+    name: fresh install and update (${{ matrix.os }})
+    needs: privacy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.13.0'
+      - name: Set up a fresh clone and update a previous installation
+        run: node dev/ci/install-update-smoke.mjs
+
+  # Compile and bundle the supported desktop platforms before a tag is pushed. No release uploads.
   desktop-build:
     name: desktop build (${{ matrix.os }})
     needs: privacy
@@ -143,8 +144,6 @@ jobs:
             bundles: deb,appimage
           - os: macos-latest
             bundles: dmg
-          - os: windows-latest
-            bundles: nsis,msi
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/target

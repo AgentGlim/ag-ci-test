@@ -1,0 +1,83 @@
+name: Windows weekly CI
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-fixtures:
+    name: Windows weekly PowerShell fixtures (5.1 and pwsh)
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Windows PowerShell 5.1 fixtures
+        shell: powershell
+        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '5.1.'
+      - name: PowerShell 7 fixtures
+        shell: pwsh
+        run: ./dev/ci/vmtest/run-tests.ps1 -ExpectedVersionPrefix '7.'
+
+  tests:
+    name: Windows weekly tests (${{ matrix.os }}, Node ${{ matrix.node }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node: '22.13.0'
+            python: '3.11'
+          - os: windows-latest
+            node: '24.x'
+            python: '3.15-dev'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: python version
+        run: python --version
+      - name: syntax check
+        run: |
+          for f in app/*.mjs dev/*.mjs harness/*.mjs harness/bin/*.mjs tools/*.mjs; do [ -e "$f" ] || continue; node --check "$f" || exit; done
+          for f in harness/bin/*.sh tools/*.sh; do [ -e "$f" ] || continue; bash -n "$f" || exit; done
+      - name: unit tests
+        run: npm test
+
+  published-copy:
+    name: Windows weekly published copy
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.13.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: clone into a fresh folder and stamp a release version
+        run: |
+          git clone --quiet --no-hardlinks "$GITHUB_WORKSPACE" "$RUNNER_TEMP/published"
+          cd "$RUNNER_TEMP/published"
+          if grep -q '"dev"' app/version.json 2>/dev/null; then node dev/stamp-version.mjs v0.0.0 .; fi
+      - name: unit tests in the published copy (isolated HOME and TMPDIR)
+        run: |
+          mkdir -p "$RUNNER_TEMP/home" "$RUNNER_TEMP/tmp"
+          cd "$RUNNER_TEMP/published"
+          HOME="$RUNNER_TEMP/home" USERPROFILE="$RUNNER_TEMP/home" TMPDIR="$RUNNER_TEMP/tmp" TEMP="$RUNNER_TEMP/tmp" TMP="$RUNNER_TEMP/tmp" CI=true npm test

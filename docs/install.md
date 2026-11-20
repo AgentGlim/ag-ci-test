@@ -1,8 +1,10 @@
 # Install AgentGlim
 
-AgentGlim is one Node server with no npm dependencies. It runs on Linux, macOS and Windows, and needs Node 22.13.0
-or newer (it uses `node:sqlite`). CI runs the full test suite on Node 22.13.0, 22.x and 24.x on Linux and on Node
-22.13.0 and 24.x on macOS and Windows (Python 3.11 to 3.15-dev).
+Linux and macOS are supported. Windows is unsupported for now (weekly CI only).
+
+AgentGlim is one Node server with no npm dependencies. It needs Node 22.13.0 or newer for `node:sqlite`.
+CI runs the full suite on Node 22.13.0, 22.x and 24.x on Linux and on Node 22.13.0 and 24.x on macOS
+(Python 3.11 to 3.15-dev).
 
 The SuperAgent listener ships in two forms in `harness/bin/`: `auditq-wait.sh` for machines with Bash (Git Bash or WSL
 on Windows), and `auditq-wait.mjs`, a Node twin with the same output, for machines without it. The app picks the Node

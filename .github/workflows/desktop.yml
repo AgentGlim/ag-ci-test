@@ -46,8 +46,6 @@ jobs:
             bundles: deb,appimage
           - os: macos-latest
             bundles: dmg
-          - os: windows-latest
-            bundles: nsis,msi
     runs-on: ${{ matrix.os }}
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/desktop/target
@@ -82,7 +80,9 @@ jobs:
           args: --bundles ${{ matrix.bundles }} -- --locked
           tagName: ${{ github.ref_name }}
           releaseName: AgentGlim ${{ github.ref_name }}
-          releaseBody: 'AgentGlim desktop installers. Requires a separate installation of Node.js 22 or newer.'
+          releaseBody: |
+            Linux and macOS are supported. Windows is unsupported for now (weekly CI only).
+            Desktop installers require a separate installation of Node.js 22 or newer.
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
       - name: Linux native-window and server-lifecycle smoke

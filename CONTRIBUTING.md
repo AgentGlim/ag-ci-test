@@ -5,10 +5,11 @@
 - `main` is the production branch: use pull requests, not direct pushes. Maintainers must configure and verify
   required status checks in GitHub; this document does not establish branch protection.
 - Work on a branch (`fix/...`, `feat/...`), push it and open a pull request into `main`.
-- CI (`.github/workflows/ci.yml`) must pass before merge: the privacy and leak scan, the unchanged Node/Python
-  matrix on Linux, macOS and Windows, and one Linux Chromium smoke lane.
+- CI (`.github/workflows/ci.yml`) must pass before merge: the privacy and leak scan, the Node/Python matrix and fresh
+  install/update checks on Linux and macOS, and one Linux Chromium smoke lane. Windows weekly CI reports its own
+  results. Keep all Windows checks out of the required status checks in GitHub.
 - Releases are annotated tags on `main`: `git tag -a vX.Y.Z -m "AgentGlim vX.Y.Z" && git push origin vX.Y.Z`.
-  Tag builds re-run the complete CI suite for that commit. Installers stay in a draft until all platforms and the
+  Tag builds re-run the complete CI suite for that commit. Installers stay in a draft until Linux, macOS and the
   Linux native-window smoke pass; an already-public release is never overwritten by a rerun. See desktop/README.md
   for the manual, main-only Rust cache pilot. Existing local release and approval gates still apply.
 

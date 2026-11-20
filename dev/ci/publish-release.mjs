@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const INSTALLER_TYPES = [/\.deb$/i, /\.AppImage$/i, /\.dmg$/i, /-setup\.exe$/i, /\.msi$/i];
+export const INSTALLER_TYPES = [/\.deb$/i, /\.AppImage$/i, /\.dmg$/i];
+
+const WINDOWS_INSTALLERS = /(?:\.exe|\.msi)$/i;
 
 export function validateRelease({ release, tag, sha, currentSha }) {
   assert.match(tag, /^v[0-9][A-Za-z0-9._-]*$/, 'Expected a version tag');
@@ -13,6 +15,8 @@ export function validateRelease({ release, tag, sha, currentSha }) {
   assert.equal(release.tag_name, tag, 'The draft belongs to a different tag');
   assert.equal(release.draft, true, 'Refusing to change an already-published release');
   const assets = release.assets ?? [];
+  assert.ok(!assets.some(asset => WINDOWS_INSTALLERS.test(asset.name)),
+    'The draft contains a Windows installer. Remove it before publishing.');
   for (const extension of INSTALLER_TYPES) {
     assert.ok(assets.some(asset => extension.test(asset.name) && asset.state === 'uploaded' && asset.size > 0),
       `Missing a complete installer matching ${extension}`);

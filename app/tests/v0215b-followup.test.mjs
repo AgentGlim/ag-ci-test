@@ -296,7 +296,8 @@ test('one update method in the docs, no placeholder clone URL, no owner notes in
   const agents = fs.existsSync(path.join(REPO, 'public-docs/AGENTS.md')) ? readDoc('public-docs/AGENTS.md') : read('AGENTS.md');
   assert.match(install, /git clone https:\/\/github\.com\/AgentGlim\/agentglim\.git/);
   assert.doesNotMatch(install, /<you>/, 'no placeholder clone URL');
-  assert.match(install, /Linux, macOS and Windows/, 'the platforms it actually runs on');
+  assert.match(install, /Linux and macOS are supported/);
+  assert.match(install, /Windows is unsupported for now \(weekly CI only\)/);
   assert.match(install, /npm run update/);
   assert.doesNotMatch(install, /git checkout vX\.Y\.Z/, 'no second update method');
   assert.doesNotMatch(readme, /Known gaps before this goes public/);

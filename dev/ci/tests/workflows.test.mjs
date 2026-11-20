@@ -8,9 +8,10 @@ import { parse } from 'yaml';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const read = name => parse(fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8'));
 const ci = read('ci.yml'), desktop = read('desktop.yml'), warm = read('desktop-cache.yml'), browser = read('browser.yml');
+const weekly = read('windows-weekly.yml');
 const action = (job, prefix) => job.steps.find(s => s.uses?.startsWith(prefix));
 
-test('every original Node/Python/platform combination remains', () => {
+test('required CI preserves the Linux and macOS test matrix', () => {
   const matrix = ci.jobs.tests.strategy.matrix;
   assert.deepEqual(matrix.os, ['ubuntu-latest']);
   assert.deepEqual(matrix.node, ['22.13.0', '22.x', '24.x']);
@@ -18,8 +19,6 @@ test('every original Node/Python/platform combination remains', () => {
   assert.deepEqual(matrix.include, [
     { os: 'macos-latest', node: '22.13.0', python: '3.11' },
     { os: 'macos-latest', node: '24.x', python: '3.15-dev' },
-    { os: 'windows-latest', node: '22.13.0', python: '3.11' },
-    { os: 'windows-latest', node: '24.x', python: '3.15-dev' },
   ]);
   assert.equal(matrix.exclude, undefined);
   const tests = ci.jobs.tests.steps.filter(s => s.run?.includes('npm test'));
@@ -28,9 +27,9 @@ test('every original Node/Python/platform combination remains', () => {
   assert.equal(tests[1].if, "runner.os == 'Linux'");
   assert.match(tests[1].run, /PYTHONWARNINGS=error::DeprecationWarning npm test/);
 });
-test('both isolated fresh-copy jobs are retained', () => {
+test('macOS retains its isolated fresh-copy job', () => {
   assert.ok(ci.jobs['published-copy'], 'published-copy lane is required');
-  assert.deepEqual(ci.jobs['published-copy'].strategy.matrix.os, ['macos-latest', 'windows-latest']);
+  assert.deepEqual(ci.jobs['published-copy'].strategy.matrix.os, ['macos-latest']);
   assert.match(ci.jobs['published-copy'].steps.at(-1).run, /USERPROFILE=.*TMPDIR=.*npm test/);
 });
 test('release validation calls the full exact-commit CI workflow, including browser smoke', () => {
@@ -102,10 +101,11 @@ test('private export allowlist carries the new CI source files', () => {
   const entries = fs.readFileSync(manifest, 'utf8').split('\n');
   assert.ok(entries.includes('.github/workflows/browser.yml'));
   assert.ok(entries.includes('.github/workflows/desktop-cache.yml'));
+  assert.ok(entries.includes('.github/workflows/windows-weekly.yml'));
   assert.ok(entries.includes('dev/ci/'));
 });
 
-test('branch and PR CI bundle every desktop platform without a release token or uploads', () => {
+test('branch and PR CI bundle both supported desktop platforms without a release token or uploads', () => {
   const build = ci.jobs['desktop-build'];
   assert.equal(build.needs, 'privacy');
   assert.equal(build.permissions.contents, 'read');
@@ -122,4 +122,36 @@ test('branch and PR CI bundle every desktop platform without a release token or 
   const smoke = build.steps.find(s => s.run?.includes('node desktop/smoke-test.mjs'));
   assert.equal(smoke.if, "runner.os == 'Linux'");
   assert.ok(build.steps.indexOf(smoke) > build.steps.indexOf(tauri));
+});
+
+test('Windows weekly reports test and smoke failures without joining required CI or publishing', () => {
+  assert.deepEqual(weekly.on, { schedule: [{ cron: '0 6 * * 1' }], workflow_dispatch: null });
+  assert.equal(weekly.permissions.contents, 'read');
+  assert.deepEqual(weekly.jobs.tests.strategy.matrix.include, [
+    { os: 'windows-latest', node: '22.13.0', python: '3.11' },
+    { os: 'windows-latest', node: '24.x', python: '3.15-dev' },
+  ]);
+  assert.deepEqual(weekly.jobs.tests.steps.slice(0, -1), ci.jobs.tests.steps.slice(0, -2));
+  assert.equal(weekly.jobs.tests.steps.at(-1).run, 'npm test');
+  assert.deepEqual(weekly.jobs['published-copy'].steps, ci.jobs['published-copy'].steps);
+  assert.deepEqual(weekly.jobs['powershell-fixtures'].steps.slice(1).map(step => step.shell), ['powershell', 'pwsh']);
+  for (const job of Object.values(weekly.jobs)) {
+    assert.match(job.name, /^Windows weekly /);
+    assert.equal(job['continue-on-error'], undefined);
+  }
+  assert.doesNotMatch(JSON.stringify(weekly), /tauri-action|upload-artifact|publish-release|GITHUB_TOKEN/);
+  assert.doesNotMatch(JSON.stringify([ci, desktop, browser, warm]), /windows-latest|windows-weekly/);
+});
+
+test('Linux and macOS both gate releases on a fresh install and update', () => {
+  const install = ci.jobs['install-update'];
+  assert.deepEqual(install.strategy.matrix.os, ['ubuntu-latest', 'macos-latest']);
+  assert.equal(install.needs, 'privacy');
+  assert.equal(install.steps[0].with['fetch-depth'], 0);
+  assert.equal(install.steps.at(-1).run, 'node dev/ci/install-update-smoke.mjs');
+  assert.deepEqual(desktop.jobs.build.strategy.matrix.include, [
+    { os: 'ubuntu-22.04', bundles: 'deb,appimage' },
+    { os: 'macos-latest', bundles: 'dmg' },
+  ]);
+  assert.match(action(desktop.jobs.build, 'tauri-apps/tauri-action@').with.releaseBody, /Windows is unsupported/);
 });

@@ -1,3 +1,4 @@
+# Windows installation is unsupported for now. This guest runner is for developer VM tests.
 param([Parameter(Mandatory=$true)][string]$Config, [Parameter(Mandatory=$true)][string]$Phase)
 $ErrorActionPreference = 'Stop'
 $c = Get-Content -Raw $Config | ConvertFrom-Json

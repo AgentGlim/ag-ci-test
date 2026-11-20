@@ -13,13 +13,15 @@ The name: a glim is a small light, a quick look. You glance at it and know what 
 | `app/` | The dashboard that runs today: a single Node server (`server.mjs`) plus one HTML page, the control/chat page (`control/`) and helper modules. No npm dependencies. |
 | `next/` | The next version (Rust daemon `agentglimd` + web UI), built under plan 68 of the plans harness. |
 | `assets/` | Logo (`agentglim-logo.svg`). |
-| `desktop/` | Tauri desktop wrapper and installers (Linux, macOS, Windows). |
+| `desktop/` | Tauri desktop wrapper and installers for Linux and macOS. |
 | `public-docs/` | Install, keys, settings and SuperAgent inbox resend guides. |
 | `site/` | The project website. |
 
 Runtime data never lives here. It sits in a working folder outside the repo (see below).
 
 ## Run the dashboard
+
+Linux and macOS are supported. Windows is unsupported for now (weekly CI only).
 
 Supported runtimes: Node 22.13-24, Python 3.11+ (for Python utilities).
 The server uses `node:sqlite` and requires Node 22.13.0 or newer.
@@ -108,8 +110,7 @@ Details: [SETUP.md](SETUP.md#send-to-agent-approvals).
 
 ## Contributing
 
-`main` is protected: work on a branch, open a pull request, and merge once CI (privacy scan, tests on Linux, macOS and
-Windows) passes. Releases are tags (`vX.Y.Z`). Turn on the privacy check that runs before every commit with
+`main` is protected: work on a branch, open a pull request, and merge once CI (privacy scan, tests on Linux and macOS) passes. Releases are tags (`vX.Y.Z`). Turn on the privacy check that runs before every commit with
 `git config core.hooksPath .githooks`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
