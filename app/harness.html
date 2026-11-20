@@ -34,7 +34,7 @@ svg{max-width:100%;display:block}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style><script src="/app-links.js"></script>
 </head><body>
-<header><h1>Harness</h1><a href="/">Back to AgentGlim</a><a href="/routing">Routing decisions</a><span class="meta" id="meta">loading...</span></header>
+<header><h1>Harness</h1><a href="/">Back to AgentGlim</a><a href="/decisions-routing">Decisions routing</a><span class="meta" id="meta">loading...</span></header>
 <main id="m"></main>
 <script>
 const esc=(x)=>String(x??'').replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -70,24 +70,24 @@ function lanes(v){const L=v.lanes;if(L.error)return `<div class="card"><h2>Worke
   <div class="m" style="margin:8px 0 4px">Free and local lanes, tried in this order:</div>${stack([{n:n.busy,l:'busy',c:'#2fd69c'},{n:n.paused,l:'paused',c:'#f0c674'},{n:n.open,l:'open',c:'#4a505a'}])}
   <div class="tw" style="margin-top:6px"><table><thead><tr><th>Lane</th><th>Kind</th><th>Now</th></tr></thead><tbody>${rows}</tbody></table></div>
   <p class="p">Read from <code>${esc(L.source)}</code>. A lane that hits a limit sits out ${dur(L.pauseS)}.</p></div>`}
-function jev(v){const J=v.jev;if(!J.found)return `<div class="card"><h2>Jev routing rules</h2><div class="m">No rules file at <code>${esc(J.file)}</code>.</div></div>`;
+function decisionsRouting(v){const J=v.decisionsRouting||v.jev;if(!J.found)return `<div class="card" id="decisions-routing"><h2>Decisions routing rules</h2><div class="m">No rules file at <code>${esc(J.file)}</code>.</div></div>`;
   const rows=J.options.map((o)=>`<tr><td><b>${esc(o.id)}</b>${J.notifyPicks.includes(o.id)?' <span class="b ready">pings you</span>':''}${J.design&&J.design.allowed.includes(o.id)?' <span class="chip">design ok</span>':''}</td><td class="nw">${esc(o.group)}</td><td>${o.efforts.map((e)=>`<span class="chip">${esc(e)}</span>`).join('')}</td><td class="m">${esc(nd(o.desc))}</td></tr>`).join('');
-  return `<div class="card wide"><h2>Jev routing rules</h2>
-  <dl class="kv"><dt>Rules file</dt><dd><code>${esc(J.file)}</code></dd><dt>Router in use</dt><dd>${J.harnessPathIsLink?'the packaged router (harness path links here)':'the harness copy in plans; the packaged router is ready but not switched'}</dd>
-  <dt>Tie margin</dt><dd>${esc(J.close)}: within this of the top score, the stronger option wins</dd><dt>If Jev fails</dt><dd>${esc(J.fallback?.pick)} at ${esc(J.fallback?.effort)} effort</dd>
-  ${J.design?`<dt>Design jobs</dt><dd>Claude only: ${esc(J.design.allowed.join(', '))}. Jev is asked first whether the job is mainly visual or UI design; ${Math.round((J.design.threshold??0.5)*100)}% or more counts as design. If that call fails, words such as ${esc(J.design.keywords.slice(0,6).join(', '))} decide. Close calls still go to the stronger option, and the ping still fires.</dd>`:''}
+  return `<div class="card wide" id="decisions-routing"><h2>Decisions routing rules</h2>
+  <dl class="kv"><dt>Rules file</dt><dd><code>${esc(J.file)}</code></dd><dt>Router model</dt><dd>${esc(J.last?.router||'jev')}</dd><dt>Router in use</dt><dd>${J.harnessPathIsLink?'the packaged router (harness path links here)':'the harness copy in plans; the packaged router is ready but not switched'}</dd>
+  <dt>Tie margin</dt><dd>${esc(J.close)}: within this of the top score, the stronger option wins</dd><dt>If the router model fails</dt><dd>${esc(J.fallback?.pick)} at ${esc(J.fallback?.effort)} effort</dd>
+  ${J.design?`<dt>Design jobs</dt><dd>Claude only: ${esc(J.design.allowed.join(', '))}. The router model is asked first whether the job is mainly visual or UI design; ${Math.round((J.design.threshold??0.5)*100)}% or more counts as design. If that call fails, words such as ${esc(J.design.keywords.slice(0,6).join(', '))} decide. Close calls still go to the stronger option, and the ping still fires.</dd>`:''}
   <dt>API key</dt><dd>${esc(J.keyEnv)}: ${({'.env':'from the .env file','env':"from the server's environment",'bashrc':'from ~/.bashrc, which is deprecated: move it to .env'})[J.keySource]||'not set: add it to .env (see .env.example)'}</dd>
-  <dt>Decisions logged</dt><dd>${J.decisions}${J.last?`, last: ${esc(J.last.pick)} at ${esc(J.last.effort)} (${Math.round((J.last.p||0)*100)}%)${J.last.design?`, design ${Math.round((J.last.pDesign??0)*100)}%`:''} ${ago(Math.round((Date.now()-Date.parse(J.last.t))/1000))}`:''}. <a href="/routing">Rate them on the Routing page</a></dd></dl>
+  <dt>Decisions logged</dt><dd>${J.decisions}${J.last?`, last: ${esc(J.last.pick)} at ${esc(J.last.effort)} (${Math.round((J.last.p||0)*100)}%)${J.last.design?`, design ${Math.round((J.last.pDesign??0)*100)}%`:''} ${ago(Math.round((Date.now()-Date.parse(J.last.t))/1000))}`:''}. <a href="/decisions-routing">Rate them on the Decisions routing page</a></dd></dl>
   <div class="m" style="margin:8px 0 2px">Strongest first:</div><div class="ord">${J.strength.map((x,i)=>`${i?'<span class="sep">&gt;</span>':''}<span class="chip">${esc(x)}</span>`).join('')}</div>
-  <div class="tw"><table><thead><tr><th>Option</th><th>Group</th><th>Efforts</th><th>What Jev reads</th></tr></thead><tbody>${rows}</tbody></table></div></div>`}
-function jevEdit(v){const J=v.jev,E=J.edits||{pending:[],recent:[]};if(!J.found)return '';
-  const show=(k,x)=>k==='jev.notifyPicks'?(Array.isArray(x)?(x.join(', ')||'none'):String(x)):String(x);
+  <div class="tw"><table><thead><tr><th>Option</th><th>Group</th><th>Efforts</th><th>What the router model reads</th></tr></thead><tbody>${rows}</tbody></table></div></div>`}
+function decisionsEdit(v){const J=v.decisionsRouting||v.jev,E=J.edits||{pending:[],recent:[]};if(!J.found)return '';
+  const show=(k,x)=>/\.notifyPicks$/.test(k)?(Array.isArray(x)?(x.join(', ')||'none'):String(x)):String(x);
   const pend=E.pending.map((p)=>`<li>${esc(p.key)} = ${esc(show(p.key,p.value))}, sent ${ago(Math.round((Date.now()-Date.parse(p.at))/1000))}</li>`).join('');
   const rec=E.recent.map((r)=>`<li>${esc(r.key)}: ${esc(show(r.key,r.old))} to ${esc(show(r.key,r.value))}, ${ago(Math.round((Date.now()-Date.parse(r.at))/1000))}</li>`).join('');
-  return `<div class="card wide" id="jevEdit"><h2>Change Jev settings</h2><p class="m">Your change goes to the SuperAgent, which applies it on its next wake. Until then the router keeps the current value.</p>
-  <div class="frow"><label for="jeClose">Tie margin</label><input id="jeClose" type="number" min="0" max="0.2" step="0.01" value="${esc(J.close)}"><button class="btn" type="button" data-send="jev.close">Send to the SuperAgent</button><span class="meta">0 to 0.2. Smaller means fewer close calls go to the stronger option.</span></div>
+  return `<div class="card wide" id="decisionsEdit"><h2>Change Decisions routing settings</h2><p class="m">Your change goes to the SuperAgent, which applies it on its next wake. Until then the router keeps the current value.</p>
+  <div class="frow"><label for="jeClose">Tie margin</label><input id="jeClose" type="number" min="0" max="0.2" step="0.01" value="${esc(J.close)}"><button class="btn" type="button" data-send="decisions.close">Send to the SuperAgent</button><span class="meta">0 to 0.2. Smaller means fewer close calls go to the stronger option.</span></div>
   <div class="m" style="margin-top:8px">Picks that ping you:</div><div class="picks">${J.options.map((o)=>`<label class="pk"><input type="checkbox" value="${esc(o.id)}"${J.notifyPicks.includes(o.id)?' checked':''}> ${esc(o.id)}</label>`).join('')}</div>
-  <button class="btn" type="button" data-send="jev.notifyPicks">Send to the SuperAgent</button>
+  <button class="btn" type="button" data-send="decisions.notifyPicks">Send to the SuperAgent</button>
   <div id="jeMsg" class="m" aria-live="polite" style="margin-top:6px">${esc(jeLast)}</div>
   ${pend?`<div class="m" style="margin-top:6px">Waiting for the SuperAgent:</div><ul class="m" style="margin:2px 0 0 18px;padding:0">${pend}</ul>`:''}
   ${rec?`<div class="m" style="margin-top:6px">Recent changes:</div><ul class="m" style="margin:2px 0 0 18px;padding:0">${rec}</ul>`:''}</div>`}
@@ -109,37 +109,37 @@ function modes(v){const M=v.modes;if(!M)return '';
   return `<div class="card"><h2>Run modes</h2><dl class="kv"><dt>Harness</dt><dd>${esc(M.harness)}${M.until?` until ${esc(new Date(M.until).toLocaleString())}`:''}</dd>${Object.entries(M.subs).map(([k,s])=>`<dt>${esc(k)}</dt><dd>${esc(s.mode)}, ${esc(s.speed)} speed</dd>`).join('')}<dt>Hang reaper</dt><dd>${esc(M.reaper)}</dd><dt>Cloud, API</dt><dd>${esc(M.cloud)}, ${esc(M.api)}</dd></dl><p class="p">Change these on the Status card. The SuperAgent applies each click.</p></div>`}
 function skills(v){const rows=v.skills.map((s)=>`<tr><td>${dot(s.found?'var(--ok)':'var(--bad)')}<b>${esc(s.id)}</b><br><span class="meta">${esc(s.title)}</span></td><td>${s.found?`<code>${esc(s.at)}</code>${s.real?`<br><span class="meta">links to </span><code>${esc(s.real)}</code>`:''}`:'<span class="meta">not installed</span>'}</td><td class="m">${esc(nd(s.why))}</td></tr>`).join('');
   return `<div class="card wide"><h2>Harness skills</h2><div class="tw"><table><thead><tr><th>Skill</th><th>Found at</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></div></div>`}
-function settings(v){const J=v.jev,L=v.lanes,D=v.disk,Lo=v.local;
+function settings(v){const J=v.decisionsRouting||v.jev,L=v.lanes,D=v.disk,Lo=v.local;
   const r=[['Worker order per role',L.order?.worker?.join(', then ')||'unknown','Run modes on the Status card; the budget router sets the order'],
     ['Free lane pause after a limit',dur(L.pauseS),'FREE_PAUSE in worker.sh'],
-    ['Jev tie margin',J.close,'Change Jev settings on this page; the SuperAgent applies it'],
-    ['Jev picks that ping you',(J.notifyPicks||[]).join(', ')||'none','Change Jev settings on this page; the SuperAgent applies it'],
+    ['Decisions routing tie margin',J.close,'Change Decisions routing settings on this page; the SuperAgent applies it'],
+    ['Decisions routing picks that ping you',(J.notifyPicks||[]).join(', ')||'none','Change Decisions routing settings on this page; the SuperAgent applies it'],
     ['Disk guard pause point',`${D.guard.pausePct}%`,'IO_GUARD_PCT in the environment of the job'],
     ['Disk guard device',D.guard.device,'IO_GUARD_DEV, else the disk of the current folder'],
     ['Local model idle stop',dur(Lo.idleStopS),'IDLE_STOP_S in local-pilot.py'],
     ['Local model on demand',yes(Lo.onDemand),'the qwen-pilot-ondemand flag in the flags folder'],
     ['Your overrides file',`${v.config.user} (${v.config.userFound?'found':'not created yet'})`,'Copy any part of app/settings.defaults.json into it']];
   return `<div class="card wide"><h2>Settings and where to change them</h2><div class="tw"><table><thead><tr><th>Setting</th><th>Now</th><th>Change it in</th></tr></thead><tbody>${r.map((x)=>`<tr><td>${esc(x[0])}</td><td><b>${esc(x[1])}</b></td><td class="m">${esc(x[2])}</td></tr>`).join('')}</tbody></table></div>
-  <p class="p">This page only reads, except the Jev settings form, which sends a request to the SuperAgent. Key values never show here; they stay in .env or your environment.</p></div>`}
+  <p class="p">This page only reads, except the Decisions routing settings form, which sends a request to the SuperAgent. Key values never show here; they stay in .env or your environment.</p></div>`}
 let jeDirty=false,jeLast='';
 async function load(){
   const v=await (await fetch('/api/harness',{cache:'no-store'})).json();
   if(v.error)throw new Error(v.error);
-  const ae=document.activeElement;if(jeDirty||(ae&&ae.closest&&ae.closest('#jevEdit')&&ae.matches('input')))return; // do not clobber an edit in progress
+  const ae=document.activeElement;if(jeDirty||(ae&&ae.closest&&ae.closest('#decisionsEdit')&&ae.matches('input')))return; // do not clobber an edit in progress
   document.getElementById('meta').textContent=`plans at ${v.roots.plans} · harness at ${v.roots.run} · checked ${new Date(v.at).toLocaleTimeString()}`;
-  document.getElementById('m').innerHTML=harnessState(v)+pieces(v)+lanes(v)+`<div style="display:grid;gap:12px;align-content:start">${disk(v)}${local(v)}${watcher(v)}${modes(v)}</div>`+jev(v)+jevEdit(v)+settings(v)+skills(v);
+  document.getElementById('m').innerHTML=harnessState(v)+pieces(v)+lanes(v)+`<div style="display:grid;gap:12px;align-content:start">${disk(v)}${local(v)}${watcher(v)}${modes(v)}</div>`+decisionsRouting(v)+decisionsEdit(v)+settings(v)+skills(v);
 }
 load().catch((e)=>{document.getElementById('m').innerHTML='<div class="card wide">Could not load: '+esc(e.message)+'. If the page is new, restart AgentGlim: <code>systemctl --user restart agentglim</code></div>'});
 setInterval(()=>load().catch(()=>{}),30000);
-document.addEventListener('input',(e)=>{if(e.target.closest('#jevEdit'))jeDirty=true});
+document.addEventListener('input',(e)=>{if(e.target.closest('#decisionsEdit'))jeDirty=true});
 let linkLast='';
 document.addEventListener('click',async(e)=>{const lb=e.target.closest('#linkTools');if(!lb)return;
   const m=document.getElementById('linkMsg');lb.disabled=true;m.textContent='Linking...';
   try{const r=await fetch('/api/harness-scaffold',{method:'POST'});const j=await r.json().catch(()=>({}));linkLast=(r.ok?'Linked. ':'Failed. ')+(j.output||'');m.textContent=linkLast;await load().catch(()=>{});const m2=document.getElementById('linkMsg');if(m2)m2.textContent=linkLast}
   catch(err){m.textContent='Failed: '+err.message}lb.disabled=false});
-document.addEventListener('click',async(e)=>{const b=e.target.closest('#jevEdit button[data-send]');if(!b)return;
-  const k=b.dataset.send,box=document.getElementById('jevEdit'),msg=document.getElementById('jeMsg');
-  const value=k==='jev.close'?String(Number(box.querySelector('#jeClose').value)):[...box.querySelectorAll('.picks input:checked')].map((x)=>x.value).join(',')||'none';
+document.addEventListener('click',async(e)=>{const b=e.target.closest('#decisionsEdit button[data-send]');if(!b)return;
+  const k=b.dataset.send,box=document.getElementById('decisionsEdit'),msg=document.getElementById('jeMsg');
+  const value=/\.close$/.test(k)?String(Number(box.querySelector('#jeClose').value)):[...box.querySelectorAll('.picks input:checked')].map((x)=>x.value).join(',')||'none';
   b.disabled=true;msg.textContent='Sending...';
   try{const r=await fetch('/api/harness-setting',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:k,value})});const j=await r.json().catch(()=>({}));
     if(r.ok&&j.queued){jeLast=`Sent ${k} = ${value}. The SuperAgent applies it on its next wake.`;msg.textContent=jeLast;jeDirty=false;load().catch(()=>{})}

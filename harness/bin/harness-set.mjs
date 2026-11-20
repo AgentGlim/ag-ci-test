@@ -3,7 +3,7 @@
 //   node harness-set.mjs keys                         every key with its current value (JSON)
 //   node harness-set.mjs check KEY VALUE              exit 0 when VALUE is valid for KEY, else exit 2 with the reason
 //   node harness-set.mjs set KEY VALUE [--by NAME]    apply it and print what changed
-// Keys:
+// Keys (Decisions routing settings; decisions.close / decisions.notifyPicks are accepted as aliases, owner 2026-11-19):
 //   jev.close         Jev tie margin: within this of the top score the stronger option wins. 0 to 0.2, two decimals at most.
 //   jev.notifyPicks   options whose pick sends a desktop ping: comma-separated option ids from the rules file, or "none".
 // Flow: Harness page -> POST /api/harness-setting -> modes.mjs request (mode_queue) -> the watcher wakes on MODE: and runs
@@ -41,12 +41,17 @@ export const KEYS = {
   },
 };
 
+// decisions.* (new name) -> jev.* (the key the run-modes queue and this file's log use)
+export const canonicalKey = (key) => String(key ?? '').replace(/^decisions\./, 'jev.');
+
 export function check(key, value) {
+  key = canonicalKey(key);
   const k = KEYS[key]; if (!k) throw new Error(`unknown harness key ${key} (known: ${Object.keys(KEYS).join(', ')})`);
   return k.parse(String(value ?? ''), readRules());
 }
 
 export function set(key, value, by = 'watcher') {
+  key = canonicalKey(key);
   const k = KEYS[key], v = check(key, value), text = fs.readFileSync(FILE, 'utf8'), r = JSON.parse(text), old = k.get(r);
   if (JSON.stringify(old) === JSON.stringify(v)) return { changed: false, old, value: v };
   let next = k.apply(text, v), parsed;
@@ -69,7 +74,7 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import
   try {
     if (cmd === 'keys') console.log(JSON.stringify({ file: FILE, values: values() }, null, 2));
     else if (cmd === 'check') { check(key, value); console.log('ok'); }
-    else if (cmd === 'set') { const r = set(key, value, by); console.log(r.changed ? `applied: ${key} ${JSON.stringify(r.old)} -> ${JSON.stringify(r.value)}` : 'no change'); }
+    else if (cmd === 'set') { const r = set(key, value, by); console.log(r.changed ? `applied: ${canonicalKey(key)} ${JSON.stringify(r.old)} -> ${JSON.stringify(r.value)}` : 'no change'); }
     else { console.error('usage: harness-set.mjs keys | check KEY VALUE | set KEY VALUE [--by NAME]'); process.exit(2); }
   } catch (e) { console.log(e.message); process.exit(2); }
 }

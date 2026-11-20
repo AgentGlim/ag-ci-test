@@ -186,17 +186,18 @@
       "source": "https://github.com/AgentGlim/agentglim"
     },
     {
-      "id": "jev-gate",
-      "name": "jev-gate",
-      "feature": "Optional Jev pre-launch routing",
+      "id": "decisions-gate",
+      "name": "decisions-gate",
+      "feature": "Optional Decisions routing before each launch (old command name jev-gate still works)",
       "required": false,
       "missing": "Bundled fallback is available; install links for use by your AI agent.",
       "license": "AgentGlim Apache-2.0 (owner-supplied adapted code)",
       "bins": [
+        "decisions-gate",
         "jev-gate"
       ],
       "paths": [
-        "{root}/tools/addons/jev-gate"
+        "{root}/tools/addons/decisions-gate"
       ],
       "bundle": "Bundle source scripts; Python remains an optional runtime",
       "vendor": true,

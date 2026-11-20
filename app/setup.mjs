@@ -17,6 +17,7 @@ import { loadPrices, planPrice, atomicJson } from './price-data.mjs';
 import { findBinary } from './deps.mjs';
 import { sameAppRequest } from './open-url-rules.mjs';
 import { cleanAliases, cleanPrefixes, cleanIcons } from './user-config.mjs';
+import { PAGE as ROUTING_PAGE, SETUP_API, canonicalApi, migrateSetup } from './decisions-routing.mjs';
 
 export const SETUP_FILE = path.join(DATA, 'setup.json');
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
@@ -114,7 +115,7 @@ export function detect() {
   });
   return {
     ...detectDefaults(), keys, keyFamilies: providerStatuses(),
-    jev: jevStatus(), eleven: !!keySource('ELEVENLABS_API_KEY'),
+    decisions: decisionsStatus(), jev: decisionsStatus(), eleven: !!keySource('ELEVENLABS_API_KEY'),
     custom: { leads: !!integrations.leadsPath && has(integrations.leadsPath), emailseq: !!integrations.emailSequencePath && has(integrations.emailSequencePath) },
   };
 }
@@ -123,7 +124,7 @@ function defaults(d) {
   const on = Object.fromEntries(d.harnesses.map((h) => [h.id, h.found]));
   return {
     version: 1,
-    jev: { on: true },
+    decisions: { on: true },
     harnesses: on,
     subs: { claude: { on: !!d.harnesses.find(h=>h.id==='claude')?.auth, plan: '' }, codex: { on: !!d.harnesses.find(h=>h.id==='codex')?.auth, plan: '' }, go: { on: d.goKeys > 0, keys: Math.max(1, d.goKeys || 1) } },
     local: { llamacpp: { on: !!d.local.llamacpp.bin, endpoint: d.local.llamacpp.endpoint }, ollama: { on: !!d.local.ollama.bin, endpoint: d.local.ollama.endpoint } },
@@ -150,8 +151,9 @@ export function setupFilled(saved = readJson(SETUP_FILE), data = DATA) {
   return (!!isObj(saved) && saved.setupComplete === true) || has(path.join(data, 'setup-complete')) || legacyComplete(saved);
 }
 export function loadSetup(d = detectDefaults()) {
-  const saved = readJson(SETUP_FILE);
+  const saved = migrateSetup(readJson(SETUP_FILE)); // old files keep Decisions routing under "jev"
   const cfg = merge(defaults(d), isObj(saved) ? saved : {});
+  cfg.jev = cfg.decisions; // old key, same object (jev-route.mjs reads loadSetup().jev)
   for (const id of ['claude','codex','go']) { cfg.subs[id].entries = normalizeEntries(id, cfg.subs[id]); cfg.subs[id].keys = cfg.subs[id].entries.length; }
   cfg.providerKeys ||= {};
   cfg.setupComplete = setupFilled(saved); // the one gate; see setupFilled()
@@ -170,7 +172,8 @@ export function clean(input) {
     budget: {apiDailyUsd:Number.isFinite(+i.budget?.apiDailyUsd) ? Math.max(0,Math.min(10000,+i.budget.apiDailyUsd)) : 5},
     guard: { autoStopHours: Number.isFinite(+i.guard?.autoStopHours) ? Math.max(0,Math.min(168,+i.guard.autoStopHours)) : 0 },
     providerKeys: Object.fromEntries(Object.entries(i.providerKeys || {}).filter(([k]) => /^[a-z0-9-]+$/.test(k)).map(([k,v]) => [k, Array.isArray(v) ? v.slice(0,100).filter(n => /^[A-Z][A-Z0-9_]*$/.test(n)) : []])),
-    jev: { on: i.jev?.on !== false },
+    // Decisions routing (was "jev", owner 2026-11-19): written under both keys so older readers keep working
+    ...(() => { const on = (isObj(i.decisions) ? i.decisions : i.jev)?.on !== false; return { decisions: { on }, jev: { on } }; })(),
     harnesses: Object.fromEntries(HARNESSES.map((h) => [h.id, b(i.harnesses?.[h.id])])),
     subs: Object.fromEntries(['claude','codex','go'].map(id => { const entries = normalizeEntries(id,i.subs?.[id]); return [id,{ on:b(i.subs?.[id]?.on), entries, keys:entries.length, plan:str(i.subs?.[id]?.plan,40) }]; })),
     local: Object.fromEntries(['llamacpp', 'ollama'].map((k) => [k, { on: b(i.local?.[k]?.on), endpoint: /^https?:\/\/[\w.\-:[\]]+(\/\S*)?$/.test(i.local?.[k]?.endpoint || '') ? str(i.local[k].endpoint, 200) : '' }])),
@@ -198,13 +201,14 @@ export function clean(input) {
 // complete:false saves the choices but leaves setup "not filled out" (no marker, setupComplete:false) until
 // completeSetup() runs; first-run.mjs uses it so a failed tool install is retried instead of recorded as done.
 // Fields the Setup form may not send; when the input leaves one out, the saved value is kept.
-const KEEP_WHEN_ABSENT = ['skillPrefixes', 'projectIcons', 'hostAliases', 'clientKeywords', 'custom', 'providerKeys', 'notify', 'local', 'guard', 'jev'];
+const KEEP_WHEN_ABSENT = ['skillPrefixes', 'projectIcons', 'hostAliases', 'clientKeywords', 'custom', 'providerKeys', 'notify', 'local', 'guard', 'decisions', 'jev'];
 // Merge, don't overwrite: unknown top-level fields in the saved file survive a Save, and known optional ones
 // the input omits keep their saved (validated) value.
 export function mergeSaved(saved, input) {
   const prev = isObj(saved) ? saved : {}, i = isObj(input) ? input : {};
   const filled = { ...i };
   for (const k of KEEP_WHEN_ABSENT) if (!(k in i) && k in prev) filled[k] = prev[k];
+  if ('jev' in i && !('decisions' in i)) filled.decisions = i.jev; // an old client sent only "jev": it wins over the saved value
   const out = clean(filled);
   for (const [k, v] of Object.entries(prev)) if (!(k in out) && k !== 'firstRun' && k !== 'file') out[k] = v;
   return out;
@@ -273,12 +277,14 @@ export function setupView(cfg = loadSetup()) {
 }
 
 // Resolve through the same settings and key loader as the CLI; never return credentials.
-export function jevStatus() {
+// Decisions routing status. Router model: jev (key JEV_API_KEY); gemini-decision is plan 89 (not wired here yet).
+export function decisionsStatus() {
   const cfg = harnessConfig();
   const entries=keyEntries('JEV_API_KEY');
   const source = entries[0]?.source || null;
-  return { keySet: !!source, keyCount:entries.length, source, routes: tilde(cfg.jev.routes), routingUrl: '/routing' };
+  return { keySet: !!source, keyCount:entries.length, source, routes: tilde(cfg.decisions.routes), routingUrl: ROUTING_PAGE, router: 'jev' };
 }
+export const jevStatus = decisionsStatus; // old name
 
 export function testJevRouting(run = execFile) {
   const apiKey = keyEntries('JEV_API_KEY')[0]?.value;
@@ -293,7 +299,7 @@ export function testJevRouting(run = execFile) {
         for (const line of String(stdout || '').trim().split('\n').reverse()) {
           try { result = JSON.parse(line); break; } catch {}
         }
-        if (err || result?.error) return resolve({ error: 'Jev routing failed. Check your key, network connection and routes file.' });
+        if (err || result?.error) return resolve({ error: 'Decisions routing failed (router model jev). Check your key, network connection and routes file.' });
         if (typeof result?.pick !== 'string' || !Number.isFinite(result.p) || typeof result.effort !== 'string')
           return resolve({ error: 'Jev returned no usable routing result.' });
         const safe = (s) => keyEntries('JEV_API_KEY').reduce((s,e)=>s.split(e.value).join('[redacted]'),s);
@@ -302,7 +308,8 @@ export function testJevRouting(run = execFile) {
   });
 }
 
-export async function jevSetupEndpoint(req, res, route) {
+export async function decisionsSetupEndpoint(req, res, route) {
+  route = canonicalApi(route); // /api/setup/jev[/test] still answers
   const headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };
   const send = (code, body) => { res.writeHead(code, headers); res.end(JSON.stringify(body)); };
   if (req.method !== 'GET') return send(405, { error: 'GET only' });
@@ -311,10 +318,11 @@ export async function jevSetupEndpoint(req, res, route) {
   if (!origin) { try { origin = new URL(req.headers.referer).origin; } catch {} }
   if (!sameAppRequest({ ...req.headers, origin }) || origin !== `http://${req.headers.host}` || req.headers['sec-fetch-site'] === 'cross-site')
     return send(403, { error: 'same-origin only' });
-  if (route === '/api/setup/jev') return send(200, { ...jevStatus(), on: loadSetup().jev.on });
+  if (route === SETUP_API) return send(200, { ...decisionsStatus(), on: loadSetup().decisions.on });
   const result = await testJevRouting();
   send(result.error ? 400 : 200, result);
 }
+export const jevSetupEndpoint = decisionsSetupEndpoint; // old name
 
 export function providerKeyEntries(id, base, aliases=[]) {
   const all=keyEntries(base,aliases),selected=loadSetup().providerKeys?.[id];

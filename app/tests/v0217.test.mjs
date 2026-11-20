@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { archiveScratch } from './helpers/weekly-scratch.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -114,20 +115,22 @@ print('ok')`;
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout, /ok/);
 });
 
-test('auditq-wait.mjs (native Windows listener) prints the same wake-ups as auditq-wait.sh', () => {
+test('auditq-wait.mjs (native Windows listener) prints the same wake-ups as auditq-wait.sh', (t) => {
   const plans = tmp(), run = path.join(plans, '_run');
+  t.after(() => archiveScratch(plans, t.passed ? 'passed' : 'failed', t.name, t.error));
   for (const d of ['audit_queue', 'chat_inbox', 'status_ask', 'owner_check', 'watchdog_queue', 'heartbeats', 'bin']) fs.mkdirSync(path.join(run, d), { recursive: true });
+  fs.writeFileSync(path.join(run, 'config.json'), JSON.stringify({ listener: { settleSec: 0 } }));
   const L = path.join(ROOT, 'harness', 'bin', 'auditq-wait.mjs');
-  const go = () => spawnSync(process.execPath, [L], { env: { ...process.env, AGENTGLIM_RUN: run, AGENTGLIM_PLANS: plans, AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8', timeout: 20e3 });
+  const go = () => spawnSync(process.execPath, [L], { env: { ...process.env, AGENTGLIM_CONFIG: path.join(plans, 'harness.json'), AGENTGLIM_RUN: run, AGENTGLIM_PLANS: plans, AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8', timeout: 20e3 });
   let r = go(); assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout.trim(), 'NONE (re-arm)');
   assert.ok(fs.existsSync(path.join(run, 'heartbeats', 'auditq-wait'))); assert.ok(fs.existsSync(path.join(run, 'audit_queue', '.alive')));
   fs.writeFileSync(path.join(run, 'chat_inbox', '123.json'), '{}');
-  r = go(); assert.match(r.stdout, /^CHAT: 123\.json \(read them/m); assert.match(r.stdout, /chat-write\.mjs/);
+  r = go(); assert.match(r.stdout, /^CHAT: 123\.json \|/m); assert.match(r.stdout, /chat-write\.mjs/);
   fs.renameSync(path.join(run, 'chat_inbox', '123.json'), path.join(run, 'chat_inbox', '123.done'));
   fs.mkdirSync(path.join(plans, '07-x')); fs.writeFileSync(path.join(plans, '07-x', 'HOLD'), '');
   fs.writeFileSync(path.join(run, 'audit_queue', '07-x__p1.req'), 'role=build\n');
   fs.writeFileSync(path.join(run, 'audit_queue', '08-y__p1.req'), 'role=verify\n');
-  r = go(); assert.match(r.stdout, /^PENDING: 08-y__p1 \(verify first: 08-y__p1\)/m);
+  r = go(); assert.match(r.stdout, /^PENDING: 08-y__p1 \|.*\| verify first/m);
   assert.ok(fs.existsSync(path.join(run, 'audit_queue', '07-x__p1.decline')), 'HOLD plan declined');
   const noq = spawnSync(process.execPath, [L], { env: { ...process.env, AGENTGLIM_RUN: path.join(plans, 'nope') }, encoding: 'utf8' });
   assert.equal(noq.status, 2); assert.match(noq.stdout, /no audit_queue folder/);

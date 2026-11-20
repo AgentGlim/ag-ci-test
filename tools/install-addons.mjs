@@ -18,5 +18,5 @@ function link(source,destination) {
     } else fs.symlinkSync(path.relative(fs.realpathSync(path.dirname(destination)),fs.realpathSync(source)),destination,fs.statSync(source).isDirectory() ? 'dir':'file');
   }catch(e){console.error(`Could not install ${path.basename(destination)} (${e.code}); bundled source remains available.`);process.exitCode=1;}
 }
-for(const [name,file] of [['jobs-track','jobs-track.py'],['jev-gate','jev-gate'],['agent-notify','agent-notify']])link(path.join(root,'tools/addons',file),path.join(prefix,'bin',name));
+for(const [name,file] of [['jobs-track','jobs-track.py'],['decisions-gate','decisions-gate'],['jev-gate','jev-gate'],['agent-notify','agent-notify']])link(path.join(root,'tools/addons',file),path.join(prefix,'bin',name));
 if(!process.argv.includes('--commands-only')) for(const harness of ['.claude','.agents'])for(const skill of JSON.parse(fs.readFileSync(path.join(root,'app/bundled-skills.json'),'utf8')))if(fs.existsSync(path.join(root,'skills',skill,'SKILL.md')))link(path.join(root,'skills',skill),path.join(root,harness,'skills',skill));

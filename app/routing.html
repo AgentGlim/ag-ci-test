@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Jev routing</title>
+<title>Decisions routing</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0c0e'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%232fd69c' stroke-width='2.4'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%232fd69c'/%3E%3C/svg%3E">
 <style>
 :root{color-scheme:dark;--bg:#0b0c0e;--panel:#121418;--panel2:#171a1f;--line:#23272e;--ink:#e9ebee;--ink2:#a9b0ba;--ink3:#6f7782;--ok:#2fd69c;--blue:#5fb8ff;--warn:#f0c674;--bad:#e2554f}
@@ -30,6 +30,13 @@ input[type=text]{flex:1 1 120px}.saved{font-size:11px;color:var(--ok)}.saved.err
 .prefs ul{margin:4px 0 8px 18px;padding:0;color:var(--ink2)}.prefs li{margin:3px 0}.tweak{background:var(--panel2);border-left:3px solid var(--warn);border-radius:6px;padding:6px 10px;margin:4px 0;color:var(--ink2)}
 .empty{color:var(--ink3);padding:8px 0}
 .dz{display:inline-block;font-size:11px;border:1px solid var(--blue);color:var(--blue);border-radius:5px;padding:0 6px;margin-left:6px;white-space:nowrap}.rule{margin:10px 0 0;font-size:12.5px;color:var(--ink2)}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}.pills button{font:inherit;font-size:12px;background:transparent;color:var(--ink2);border:1px solid #2a2f37;border-radius:999px;padding:3px 10px;cursor:pointer}
+.pills button:hover{color:var(--ink);border-color:var(--ink3)}.pills button[aria-pressed=true]{background:var(--c,var(--ink2));border-color:var(--c,var(--ink2));color:#0b0c0e;font-weight:600}
+.sum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--ink2);margin:0 0 4px}.sum b{color:var(--ink)}
+.tick{font-weight:700}.tick.y{color:var(--ok)}.tick.n{color:var(--bad)}.tick.u{color:var(--ink3);font-weight:400}
+td.reason{max-width:260px;overflow-wrap:anywhere;color:var(--ink2);font-size:12px}td.cost{white-space:nowrap;color:var(--ink2);font-size:12px}
+.more{font:inherit;font-size:12px;background:transparent;color:var(--blue);border:1px solid #2a2f37;border-radius:6px;padding:3px 10px;cursor:pointer;margin-top:8px}
+details.fbwrap>summary{cursor:pointer;font-weight:600;font-size:14px}
 @media (max-width:900px){.strip{grid-template-columns:1fr 1fr}.cost{grid-template-columns:1fr 1fr}}
 @media (max-width:700px){
  table,tbody,tr,td{display:block;width:100%}thead{display:none}tr{border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:10px;background:var(--panel2)}
@@ -38,7 +45,7 @@ input[type=text]{flex:1 1 120px}.saved{font-size:11px;color:var(--ok)}.saved.err
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style><script src="/app-links.js"></script>
 </head><body>
-<header><h1>Jev routing</h1><a href="/">Back to AgentGlim</a><a href="/goals">Goals</a><span class="meta" id="meta">loading...</span></header>
+<header id="decisions-routing"><h1>Decisions routing</h1><a href="/">Back to AgentGlim</a><a href="/goals">Goals</a><span class="meta" id="meta">loading...</span></header>
 <main id="m"><div class="card">Loading...</div></main>
 <script>
 const esc=(x)=>String(x??'').replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -86,21 +93,57 @@ function fbCell(r,models){
 }
 function table(d){
   if(!d.decisions.length)return '<div class="empty">No decisions yet.</div>';
-  return `<table><thead><tr><th>Time</th><th>Task</th><th>Model</th><th>Reasoning</th><th>Runner-up</th><th>Your feedback</th></tr></thead><tbody>${d.decisions.map((r)=>`<tr>
+  return `<table><thead><tr><th>Time</th><th>Task</th><th>Router</th><th>Model</th><th>Reasoning</th><th>Runner-up</th><th>Your feedback</th></tr></thead><tbody>${d.decisions.map((r)=>`<tr>
    <td class="when" data-l="Time">${esc(new Date(r.t).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))}</td>
    <td class="task" data-l="Task" title="${esc(r.taskFull)}">${esc(r.task)}</td>
+   <td class="router" data-l="Router" title="The model that made this routing decision">${esc(r.router||'jev')}</td>
    <td data-l="Model">${pill(r.pick,COL[r.pick])}<span class="pc">${pc(r.pPick)}</span>${r.design?`<span class="dz" title="Design job: only Claude models were ranked">design${r.pDesign!=null?' '+pc(r.pDesign):''}</span>`:''}</td>
    <td data-l="Reasoning">${pill(r.effort,ECOL[r.effort]||'#a9b0ba')}<span class="pc">${pc(r.pEffort)}</span></td>
    <td data-l="Runner-up">${r.runnerUp?pill(r.runnerUp.model,COL[r.runnerUp.model])+`<span class="pc">${pc(r.runnerUp.p)}</span>`:'-'}</td>
    <td data-l="Your feedback">${fbCell(r,d.models)}</td></tr>`).join('')}</tbody></table>`;
 }
+const SRC={jev:{t:'Jev',c:'#2fd69c'},gemini:{t:'Gemini',c:'#5fb8ff'},superagent:{t:'SuperAgent override',c:'#f0c674'},owner:{t:'Owner manual',c:'#e2554f'}};
+const SUC={success:{t:'Success',c:'#2fd69c'},partial:{t:'Partial',c:'#f0c674'},fail:{t:'Fail',c:'#e2554f'},unknown:{t:'Unknown',c:'#6f7782'}};
+let LF=(/[#&]src=(\w+)/.exec(location.hash)||[])[1]||'all',LN=300;
+const kfmt=(n)=>n==null?'':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n);
+function costCell(c){if(!c)return '-';const p=[];if(c.points!=null)p.push(`${c.points} pts`);if(c.tokens!=null)p.push(`${kfmt(c.tokens)} tok`);if(c.usd!=null)p.push('$'+(c.usd<0.01?c.usd.toFixed(5):c.usd.toFixed(2)));return p.length?esc(p.join(' · ')):'-'}
+function tick(r){const other=r.source==='jev'?(r.gemini?`Gemini picked ${r.gemini.pick} ${r.gemini.effort||''}`:''):r.jevPick?`Jev picked ${r.jevPick}`:'';
+  if(r.match===true)return `<span class="tick y" title="${esc(other)}" aria-label="matches">&#10003;</span>`;
+  if(r.match===false)return `<span class="tick n" title="${esc(other)}" aria-label="differs">&#10007;</span>`;
+  return '<span class="tick u" aria-label="no comparison">-</span>'}
+function sucCell(r){if(r.success==null)return `<span class="meta" title="${esc(r.successWhy||'not scored yet (30-minute job)')}">${r.source==='gemini'&&!r.answered?'n/a':'-'}</span>`;const s=SUC[r.success]||SUC.unknown;return `<span class="pill" style="--c:${s.c}" title="${esc(r.successWhy||'')}">${s.t}</span>`}
+function logSummary(L){
+  const s=L.summary;if(!s)return '<p class="sum">Cost, task success and Gemini accuracy fill in after the 30-minute job (routing-summary.mjs) first runs.</p>';
+  const a=s.accuracy||{},t=s.totals||{},sc=t.success||{},all={success:0,partial:0,fail:0,unknown:0};
+  Object.values(sc).forEach((o)=>Object.keys(all).forEach((k)=>all[k]+=o[k]||0));
+  const p=(x)=>x==null?'-':Math.round(x*100)+'%';
+  return `<div class="sum"><span>Gemini vs Jev pick match: <b>${p(a.pick)}</b> on ${a.compared||0} (effort ${p(a.effort)})</span><span>G2: <b>${esc(s.g2?.state||'-')}</b> <span class="meta">${esc(s.g2?.text||'')}</span></span></div>
+   <div class="sum"><span>Task success: <b>${all.success}</b> ok, <b>${all.partial}</b> partial, <b>${all.fail}</b> fail, ${all.unknown} unknown</span><span>Routing cost: Jev ${kfmt(t.jevTokens||0)} tokens, Gemini ${kfmt(t.geminiTokens||0)} tokens ($${(t.geminiUsd||0).toFixed(4)} at list price)</span><span class="meta">summary ${esc(new Date(s.at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))}, every 30 min</span></div>`}
+function logTable(L){
+  const rows=L.rows.filter((r)=>LF==='all'||r.source===LF);
+  const pills=`<div class="pills" role="group" aria-label="Filter by source"><button type="button" data-src="all" aria-pressed="${LF==='all'}">All ${L.total}</button>${L.sources.map((k)=>`<button type="button" data-src="${k}" style="--c:${SRC[k].c}" aria-pressed="${LF===k}">${SRC[k].t} ${L.counts[k]||0}</button>`).join('')}</div>`;
+  if(!rows.length)return pills+'<div class="empty">No decisions from this source yet.</div>';
+  const shown=rows.slice(0,LN);
+  return pills+`<table class="log"><thead><tr><th>Time</th><th>Prompt</th><th>Source</th><th>Pick</th><th>Effort</th><th>Reason</th><th>Match</th><th>Cost</th><th>Task success</th></tr></thead><tbody>${shown.map((r)=>`<tr data-src="${esc(r.source)}">
+   <td class="when" data-l="Time">${esc(new Date(r.t).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))}</td>
+   <td class="task" data-l="Prompt" title="${esc(r.promptFull)}">${esc(r.prompt)||'<span class="meta">-</span>'}</td>
+   <td data-l="Source"><span class="pill" style="--c:${SRC[r.source].c}">${SRC[r.source].t}</span></td>
+   <td data-l="Pick">${r.pick?(COL[r.pick]?pill(r.pick,COL[r.pick]):esc(r.pick)):'<span class="meta">-</span>'}${r.p!=null?`<span class="pc">${pc(r.p)}</span>`:''}</td>
+   <td data-l="Effort">${r.effort?pill(r.effort,ECOL[r.effort]||'#a9b0ba'):'<span class="meta">-</span>'}</td>
+   <td class="reason" data-l="Reason">${esc(r.reason)}</td>
+   <td data-l="Match">${tick(r)}</td>
+   <td class="cost" data-l="Cost">${costCell(r.cost)}</td>
+   <td data-l="Task success">${sucCell(r)}</td></tr>`).join('')}</tbody></table>${rows.length>LN?`<button type="button" class="more">Show ${Math.min(300,rows.length-LN)} more (${rows.length-LN} hidden)</button>`:''}`}
+function renderLog(){const L=D&&D.log;const el=document.getElementById('logtbl');if(!el||!L)return;el.innerHTML=L.error?`<div class="empty">Could not read the logs: ${esc(L.error)}</div>`:logTable(L)}
 function prefs(p){
   return `<ul>${p.lines.map((l)=>`<li>${esc(l)}</li>`).join('')}</ul>${p.suggestions.map((s)=>`<div class="tweak"><b>Suggested tweak (text only, nothing was changed):</b> ${esc(s)}</div>`).join('')}`;
 }
 let D=null;
 function render(d){
+  const fbOpen=!!document.querySelector('details.fbwrap[open]');
   D=d;const t=d.total;
-  document.getElementById('meta').textContent=`${t} decision${t===1?'':'s'} · updated ${new Date(d.at).toLocaleTimeString()}`;
+  const rm=Object.entries(d.routers||{}).map(([k,n])=>`${k} ${n}`).join(', ');
+  document.getElementById('meta').textContent=`${t} decision${t===1?'':'s'}${rm?` (router: ${rm})`:''} · updated ${new Date(d.at).toLocaleTimeString()}`;
   const tot=Math.max(t,1),ord=d.models.filter((m)=>d.picks[m]);
   document.getElementById('m').innerHTML=
    `<div class="card"><div class="strip">
@@ -108,14 +151,17 @@ function render(d){
      <div><div class="lbl">Share of picks per model</div>${t?shareBar(d.picks,ord,COL,'share of picks per model',tot):'<span class="meta">none yet</span>'}</div>
      <div><div class="lbl">Share per reasoning level</div>${t?shareBar(d.effortCounts,d.efforts,ECOL,'share per reasoning level',tot):'<span class="meta">none yet</span>'}</div>
      <div class="heavy${d.heavy?' on':''}"><div class="lbl" title="${esc((d.heavyPicks||[]).map(nm).join(', '))}">Picks that ping you (${(d.heavyPicks||[]).length})</div><div class="big">${d.heavy}</div>${d.heavy?'<span class="flag">Heavy token use</span>':'<span class="meta">none, light on tokens</span>'}</div>
-   </div>${d.design?`<p class="rule"><b>Design rule:</b> jobs that Jev rates as mainly visual or UI design (${Math.round((d.design.threshold??0.5)*100)}% or more) are ranked only among ${esc(d.design.allowed.map(nm).join(', '))}. ${d.designCount||0} design job${d.designCount===1?'':'s'} so far.</p>`:''}</div>
+   </div>${d.design?`<p class="rule"><b>Design rule:</b> jobs that the router model rates as mainly visual or UI design (${Math.round((d.design.threshold??0.5)*100)}% or more) are ranked only among ${esc(d.design.allowed.map(nm).join(', '))}. ${d.designCount||0} design job${d.designCount===1?'':'s'} so far.</p>`:''}</div>
+   <div class="card" id="log"><h2>Decisions log</h2><p class="sub">Every routing decision from four sources, newest first. Gemini runs shadow-only (logged, never answers) until you approve G2. Match: Jev and Gemini picked the same model. Hover a prompt for the full text and a success label for why.</p>${d.log?logSummary(d.log):''}<div id="logtbl"></div></div>
    <div class="card"><h2>Picks over time</h2><p class="sub">One dot per decision, one row per model, strongest model on top.</p>${timeline(d,d.models)}</div>
    <div class="card"><h2>Where the spend is going (rough)</h2><p class="sub">A relative guide only, not dollars. Spend points per pick: top 10, mid 4, cheap 1, free 0.</p>${costView(d)}</div>
    <div class="card prefs"><h2>What you prefer so far</h2><div id="prefs">${prefs(d.prefs)}</div></div>
-   <div class="card"><h2>Decisions, newest first</h2><p class="sub">Hover a task for the full text. Click a verdict to save it; changing the dropdown or note later updates the saved verdict.</p><div id="tbl">${table(d)}</div></div>`;
+   <div class="card"><details class="fbwrap"><summary>Rate Jev picks (${t})</summary><p class="sub">Hover a task for the full text. Click a verdict to save it; changing the dropdown or note later updates the saved verdict.</p><div id="tbl">${table(d)}</div></details></div>`;
+  if(fbOpen)document.querySelector('details.fbwrap').open=true;
+  renderLog();
 }
 async function load(){
-  const d=await (await fetch('/api/routing',{cache:'no-store'})).json();
+  const d=await (await fetch('/api/decisions-routing',{cache:'no-store'})).json();
   const a=document.activeElement; if(D&&a&&a.closest&&a.closest('#tbl')&&a.matches('input,select'))return; // do not clobber typing
   render(d);
 }
@@ -124,13 +170,15 @@ async function save(box,verdict){
   const body={id,verdict,better:box.querySelector('select').value||null,note:box.querySelector('input').value};
   st.className='saved';st.textContent='Saving...';
   try{
-    const r=await fetch('/api/routing-feedback',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),j=await r.json();
+    const r=await fetch('/api/decisions-routing-feedback',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
     box.querySelectorAll('button.v').forEach((b)=>{const on=b.dataset.v===verdict;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
     st.textContent='Saved '+new Date(j.feedback.t).toLocaleString();box.dataset.verdict=verdict;
     document.getElementById('prefs').innerHTML=prefs(j.prefs);
   }catch(e){st.className='saved err';st.textContent='Not saved: '+e.message}
 }
+document.addEventListener('click',(e)=>{const p=e.target.closest('.pills button');if(p){LF=p.dataset.src;LN=300;history.replaceState(null,'',LF==='all'?location.pathname:'#src='+LF);renderLog();return}
+  if(e.target.closest('button.more')){LN+=300;renderLog();return}});
 document.addEventListener('click',(e)=>{const b=e.target.closest('button.v');if(!b)return;const box=b.closest('.fb');if(box)save(box,b.dataset.v)});
 document.addEventListener('change',(e)=>{const box=e.target.closest('.fb');if(!box)return;const on=box.querySelector('button.v.on');if(on)save(box,on.dataset.v)});
 load().catch((e)=>{document.getElementById('m').innerHTML='<div class="card">Could not load: '+esc(e.message)+'</div>'});

@@ -22,6 +22,9 @@ async function server(t, skillsUrl = 'http://127.0.0.1:9000/?tab=all&view=edit')
   write('plans/02-example-remote/PLAN.md', '# Example remote\n');
   write('plans/02-example-remote/_build/subitems.json', { items: [{ id: 'one', status: 'done', brief: '_build/features/one/BRIEF.md' }] });
   write('plans/02-example-remote/_build/features/one/r1/AUDIT.md', '## Progress\nOverall spec completion: 93%.\n');
+  // Plan progress is measured from final VERIFY; feature audit evidence remains separate.
+  write('plans/01-example-audit/_build/VERIFY.md', 'Verdict: PASS\nRequirements: 100 pass / 100 total\n');
+  write('plans/02-example-remote/_build/VERIFY.md', 'Verdict: PASS\nRequirements: 93 pass / 100 total\n');
   write('plans/_run/state.json', { projects: { '01-example-audit': { stage: 'done', stages: [] }, '02-example-remote': { stage: 'done', stages: [] } } });
   const child = spawn(process.execPath, ['app/server.mjs', '0'], { cwd: path.resolve(import.meta.dirname, '../..'), env: {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: home, USERPROFILE: home, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_ENV_FILE: path.join(home, 'env'), AGENTGLIM_CONFIG: path.join(home, 'harness.json'), AGENTGLIM_PROJECTS: home, AGENTGLIM_PLANS: path.join(home, 'plans'), AGENTGLIM_DEV: '1',

@@ -294,5 +294,24 @@
       "launch": "bash _run/bin/worker-launch.sh pi <cwd> <promptfile> <outdir> <timeout> {effort} --model <your-local-provider/model>",
       "desc": "local Qwen3.6 on this machine: free and private, slower and weaker; simple private tasks, no web"
     }
+  },
+  "router": {
+    "_doc": "Close-call policy: lower confidence than closeCallP and runner-up within closeCallGap. Cost orders are relative routing tiers within each family, cheapest first; no cross-family price assumptions. Protected review/verify/install/owner/pinned work keeps the original pick.",
+    "closeCallP": 0.45,
+    "closeCallGap": 0.08,
+    "costOrder": [
+      [
+        "codex-luna",
+        "codex-terra",
+        "codex-sol",
+        "codex-astra"
+      ],
+      [
+        "claude-haiku",
+        "claude-sonnet",
+        "claude-opus",
+        "claude-fable"
+      ]
+    ]
   }
 }

@@ -1,4 +1,4 @@
-// free-models.mjs: which Jev routing options a launch may consider.
+// free-models.mjs: which Decisions routing options a launch may consider.
 // Hosted free models belong only in autonomous project workers: every launch that is not explicitly a
 // plan-loop worker (jev-route.mjs --plan-worker) gets a strict allowlist (Claude, Codex, DeepSeek Flash).
 // Anything else (free, local, unknown) is refused, so a free tier is never spent on unreviewed interactive work.

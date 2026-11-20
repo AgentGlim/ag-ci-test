@@ -9,6 +9,7 @@ import { readProcessStat, procRoot } from './proc.mjs';
 import { python } from './python.mjs';
 import { execFile } from 'node:child_process';
 import { foldWrappers } from './working.mjs';
+import { foldAttempts } from './plan-status.mjs';
 
 // Claude queue / agent.sh kind aliases -> model ids (follow-up 2026-11-13: opus48 claudeq jobs showed as Sonnet)
 export const CLAUDE_KIND_ID = { fable: 'claude-fable-5-1', opus: 'claude-opus-5-5', opus48: 'claude-opus-4-8', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5' };
@@ -66,12 +67,13 @@ export function saveFeatures(file, list) {
     if (plan && plan !== it.plan) { it.plan = plan; add++; }
     if (!j.isPlan && it.plan) { it.plan = null; it.movedTo = j.project; add++; }
     if (label !== it.label) { it.label = label; add++; }
+    if (j.retryCount && JSON.stringify(it.retryHistory || []) !== JSON.stringify(j.retryHistory || [])) { it.retryCount = j.retryCount; it.retryHistory = j.retryHistory; it.outdir = j.outdir || it.outdir; add++; }
   }
   for (const j of list) {
     // only hand-offs (subagents, agent.sh, queue takes) are kept; the SuperAgent's own chat turns (one-on-one) are not sub-tasks
     if (!j || j.status !== 'done' || !j.isPlan || ids.has(j.id) || jobSize(j) !== 'feature' || !j.kind || j.kind === 'one-on-one' || j.kind === 'autonomous') continue;
     if (typeof j.project === 'string' && (j.project.startsWith('_') || j.project === 'jobtrack-test')) continue;
-    have.push({ id: j.id, plan: j.project, label: cleanLabel(j.label || 'job'), finished: new Date(j.ended || Date.now()).toISOString().slice(0, 10), harness: j.harness || null, model: j.model || null, kind: j.kind || null, started: j.started || null, ended: j.ended || null }); ids.add(j.id); add++;
+    have.push({ id: j.id, plan: j.project, label: cleanLabel(j.label || 'job'), finished: new Date(j.ended || Date.now()).toISOString().slice(0, 10), harness: j.harness || null, model: j.model || null, kind: j.kind || null, retryCount: j.retryCount || 0, retryHistory: j.retryHistory || [], outdir: j.outdir || null, stepId: j.stepId, step: j.step, round: j.round, revision: j.revision, started: j.started || null, ended: j.ended || null }); ids.add(j.id); add++;
   }
   if (add) { try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify({ items: have }, null, 1)); fs.renameSync(file + '.tmp', file); } catch {} }
   return have;
@@ -100,7 +102,7 @@ export function cleanLabel(label) {
 // (saveFeatures). Newest first.
 export function visibleJobs(list, now = Date.now()) {
   // Fold only proved wrapper/take lineage; preserve identity, evidence, raw IDs and attempt generation.
-  return foldWrappers(list.filter(Boolean)).filter((j) => j && (j.status === 'running' || now - (j.ended || 0) < RECENT_MS))
+  return foldAttempts(foldWrappers(list.filter(Boolean))).filter((j) => j && (j.status === 'running' || now - (j.ended || 0) < RECENT_MS))
     .sort((a, b) => (b.started || 0) - (a.started || 0))
     .map((j) => ({
       pid: j.pid, pidStart: j.pidStart, parentPid: j.parentPid, parentStart: j.parentStart,
@@ -109,6 +111,7 @@ export function visibleJobs(list, now = Date.now()) {
       transcriptVerified: j.transcriptVerified, parentVerified: j.parentVerified, lastActivity: j.lastActivity, rawIds: j.rawIds,
       lineageRecords: (j.lineageRecords || []).map(w => ({ id: w.id, pid: w.pid, pidStart: w.pidStart, launcher: w.launcher,
         req: w.req, dispatchGeneration: w.dispatchGeneration, dispatchVerified: w.dispatchVerified })),
+      retryCount: j.retryCount || 0, retryHistory: j.retryHistory || [], stepId: j.stepId, step: j.step, round: j.round, revision: j.revision,
       id: j.id, project: j.project, isPlan: !!j.isPlan, kind: KIND_LABEL[j.kind] ? j.kind : 'one-on-one',
       harness: j.harness || '?', model: (j.model === 'opus48' ? CLAUDE_KIND_ID.opus48 : j.model) || null, label: cleanLabel(j.label), slug: j.slug || null, note: j.note || null, status: shownStatus(j), activity: j.activity, activityHint: j.activityHint, rc: j.rc ?? null,
       endReason: j.endReason || null, started: j.started || null, touches: j.touches || null, oneOff: isOneOff(j, now), ended: j.ended || null, outdir: j.outdir || null, launcher: j.launcher || null,
@@ -132,6 +135,7 @@ export function outdirRc(o, since = 0) {
 export function endState(rc) {
   rc = rc == null ? null : String(rc).trim();
   if (rc == null || rc === '' || rc === '0') return ['done', null];
+  if (rc === '75') return ['busy', 'busy, retried'];
   if (rc === '124') return ['failed', 'timed out'];
   if (['130', '137', '143'].includes(rc) || rc.startsWith('-')) return ['stopped', 'killed'];
   return ['failed', `exit code ${rc}`];

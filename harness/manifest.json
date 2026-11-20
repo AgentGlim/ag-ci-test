@@ -61,9 +61,9 @@
       "home": "agentglim",
       "decision": "packaged",
       "surface": [
-        "Harness page: Jev settings"
+        "Harness page: Decisions routing settings"
       ],
-      "why": "Applies Jev tie-margin and notification changes queued from the Harness page.",
+      "why": "Applies Decisions routing tie-margin and notification changes queued from the Harness page.",
       "next": "Run npm run scaffold-harness to link it into the run folder."
     },
     {
@@ -95,14 +95,14 @@
     },
     {
       "id": "jev-router",
-      "title": "Jev model and effort router",
+      "title": "Decisions routing: model and effort router (router model jev)",
       "path": "{run}/bin/jev-route.mjs",
       "packaged": "{agentglim}/harness/bin/jev-route.mjs",
       "home": "agentglim",
       "decision": "packaged",
       "surface": [
-        "Routing page",
-        "Harness page: Jev rules"
+        "Decisions routing page",
+        "Harness page: Decisions routing rules"
       ],
       "why": "Picks a model and reasoning effort for a job from the rules file.",
       "next": "Run npm run scaffold-harness to link it into the run folder."

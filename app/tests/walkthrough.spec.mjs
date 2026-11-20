@@ -170,7 +170,7 @@ async function swarm(browser, width, withTour, seed) {
 // Pages menu: Goals, Routing, Process guard. Skill Editor is its own top-level header button (#skillsLink, href comes from
 // user config, so match by id; it must work without opening the menu). The dev-only closed "Archived" section
 // (Harness/Control/Reaper) is stripped in production and not tested.
-const MENU = ['/goals', '/routing', '/process-guard', '#skillsLink'];
+const MENU = ['/goals', '/decisions-routing', '/process-guard', '#skillsLink'];
 async function clickNav(page, ctx, loc) {
   const popup = ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null);
   const nav = page.waitForNavigation({ timeout: 8000, waitUntil: 'commit' }).catch(() => null);

@@ -21,15 +21,17 @@ Defaults are in `app/settings.defaults.json`. Do not edit that file. Put your ow
 the keys you change, for example:
 
 ```json
-{ "jev": { "routes": "~/agentglim-rules/jev-routes.json" } }
+{ "decisions": { "routes": "~/agentglim-rules/jev-routes.json" } }
 ```
 
-Check the merged result with `node app/settings.mjs`, or one value with `node app/settings.mjs --get jev.routes`.
+Check the merged result with `node app/settings.mjs`, or one value with `node app/settings.mjs --get decisions.routes`.
+The old `"jev"` block name (before 2026-11-19) is still read and still answers `--get jev.routes`.
 
-## Jev routing rules
+## Decisions routing rules
 
-The Routing and Harness pages read the Jev rules file named by `jev.routes` (default: `harness/jev-routes.json`
-in this repo). To change the rules, copy it somewhere outside the repo, edit it, and point `jev.routes` at
+The Decisions routing page (`/decisions-routing`; `/routing` and `/jev-routing` redirect there) and the Harness
+page read the rules file named by `decisions.routes` (default: `harness/jev-routes.json`
+in this repo). To change the rules, copy it somewhere outside the repo, edit it, and point `decisions.routes` at
 your copy.
 
 ## SuperAgent inbox resend

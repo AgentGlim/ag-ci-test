@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { harnessConfig } from '../config.mjs';
+import { reviewLoopRows } from './loop-events.mjs';
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(`usage: node status-write.mjs --done "..." --running "..." --blocked "..." --next "..." [--optimize "..."]
        node status-write.mjs --hourly | --auto
@@ -57,7 +58,7 @@ try { if (S.featurePlan && S.featureLoop) loop = execFileSync('bash', [S.feature
 const asked = ['done', 'running', 'blocked', 'next', 'optimize'].some((k) => typeof opt[k] === 'string');
 const lines = asked ? { done: opt.done || '', running: opt.running || '', blocked: opt.blocked || '', next: opt.next || '', optimize: opt.optimize || '' } : prev.lines || {};
 const hist = (prev.history || []).concat([{ at: now.toISOString(), usage: usage?.pct ?? null, running: counts.running }]).slice(-48);
-const out = { at: now.toISOString(), source: asked ? 'asked' : 'hourly', linesAt: asked ? now.toISOString() : prev.linesAt || null, mode: overnight ? 'overnight' : 'normal', driverAlive: snap?.driverAlive ?? null, usage, counts, plans, features: sub, loop, lines, history: hist };
+const out = { at: now.toISOString(), source: asked ? 'asked' : 'hourly', linesAt: asked ? now.toISOString() : prev.linesAt || null, mode: overnight ? 'overnight' : 'normal', driverAlive: snap?.driverAlive ?? null, usage, counts, plans, features: sub, loop, reviewLoops: reviewLoopRows(RUN, PLANS), lines, history: hist };
 fs.writeFileSync(`${OUT}.next`, JSON.stringify(out, null, 2) + '\n');
 fs.renameSync(`${OUT}.next`, OUT);
 // --auto (owner 2026-11-11): status-refresh.sh / the AgentGlim 5-min fallback answer pending asks with the numbers, marked "auto"

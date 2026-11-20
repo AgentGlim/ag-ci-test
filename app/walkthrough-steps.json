@@ -93,10 +93,10 @@
    "body": "Work sent to free API endpoints: OpenCode, OpenRouter free models, Groq, Cloudflare Workers AI and Google AI Studio. It costs $0, so the card shows what the same tokens would have cost at DS4.1 Flash rates."
   },
   {
-   "id": "jev",
+   "id": "decisions-routing",
    "target": "#setupBtn",
-   "title": "Jev routing",
-   "body": "Open Setup \u2192 Jev routing to add JEV_API_KEY from typesafe.ai, check the active routes file and test a model pick. Turn routing off to use Sonnet for subagents. The Routing page shows the routing decisions."
+   "title": "Decisions routing",
+   "body": "Open Setup \u2192 Decisions routing to add JEV_API_KEY (router model jev, from typesafe.ai), check the active routes file and test a model pick. Turn routing off to use Sonnet for subagents. The Decisions routing page shows each decision and which router model made it."
   },
   {
    "id": "subs",

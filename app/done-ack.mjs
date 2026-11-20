@@ -55,6 +55,7 @@ function stoppedOnPurpose(j) {
 }
 // end state -> 'done' | 'failed' | 'stopped' | null (skip)
 export function outcomeOf(j, wrapper = null) {
+  if (String(j.rc) === '75') return null; // busy/paced retry, never a failure notice
   let st = shownStatus(j);
   if (st === 'running' || st === 'idle') return null;
   if (st === 'stopped') { if (j.summary) st = 'done'; else if (stoppedOnPurpose(j)) return null; }
@@ -63,7 +64,7 @@ export function outcomeOf(j, wrapper = null) {
 }
 
 // ---------- one-sentence description (DESIGN 4.5) ----------
-const TAGS = /\[(?:jev|plan|task|quiet)[^\]]*\]\s*/gi;
+const TAGS = /\[(?:jev|decisions|plan|task|quiet)[^\]]*\]\s*/gi;
 export function cleanSentence(s, max = 140) {
   let t = String(s || '').replace(TAGS, '').replace(/\s+/g, ' ').trim();
   t = t.replace(/^you are [^.]*\.\s*/i, '');

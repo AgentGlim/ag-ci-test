@@ -15,7 +15,7 @@ The AgentGlim folder has `tools/first-run.mjs` and `app/server.mjs`. Use the cur
 
     node tools/first-run.mjs status
 
-`questions` lists what is still open (`harnesses`, `jev`, `budget`, `goals`). If it is empty, setup is done: skip to section 4.
+`questions` lists what is still open (`harnesses`, `decisions`, `budget`, `goals`). If it is empty, setup is done: skip to section 4.
 
 ## 2. The interview (plan-mode style, in chat)
 
@@ -24,7 +24,7 @@ Rules: ask **one question at a time**, wait for the answer, then ask the next. N
 Ask only the questions listed in `questions`, in this order:
 
 1. **Harnesses.** Say which of Claude Code, Codex, Pi and OpenCode `status` found logged in, and ask which ones to track. Recommend the logged-in ones.
-2. **Jev routing.** Jev picks the model and effort for each subagent job (needs a Jev key). Recommend off unless the user has a key.
+2. **Decisions routing.** A router model (jev) picks the model and effort for each subagent job (needs a Jev key). Recommend off unless the user has a key.
 3. **Daily API budget.** A local tracking cap, not a provider limit. Recommend $5 per day.
 4. **Goals.** Ask what the user wants their agents to move forward. Then, one question each: for every goal, what is the first concrete next step, and what would "done" look like? Ask "Anything else?" until the user says no. Suggest 1 to 3 goals; allow up to 12.
 5. **Global note.** Ask once: "May I add a short AgentGlim note to your global agent instructions and install this skill, so any agent in any folder knows what AgentGlim is?" Recommend yes.
@@ -37,7 +37,7 @@ Write the answers to a temporary JSON file (outside the repo) and apply them:
 
     node tools/first-run.mjs apply /path/to/answers.json
 
-    { "harnesses": ["codex"], "jev": false, "apiDailyUsd": 5, "globalHints": true,
+    { "harnesses": ["codex"], "decisions": false, "apiDailyUsd": 5, "globalHints": true,
       "goals": [ { "title": "Ship the first feature", "next_action": "Write the acceptance list",
                    "outcome": "A customer can use it", "metric": "Paying users" } ] }
 

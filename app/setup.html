@@ -29,12 +29,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#0b0c0e
 @media (max-width:640px){.cp{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cp .path{grid-column:1/-1}.kv{grid-template-columns:minmax(0,1fr)}.row{grid-template-columns:auto minmax(0,1fr)}.row>:nth-child(3){grid-column:2}.row .sub{grid-column:1/-1}}
 input[type=password]{font:inherit}:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.sub{color:var(--ink2)!important}.meta{color:#a9b0ba}summary{cursor:pointer}details.card>summary>h2{display:inline;margin:0}input[data-credential]{max-width:100%}.copy{padding:3px 0}#msg{overflow-wrap:anywhere}</style></head>
 <body>
+<script>addEventListener('DOMContentLoaded',()=>{if(location.hash==='#jev')location.hash='#decisions-routing'})/* old Setup link */</script>
 <header><h1><a href="/" style="color:inherit;text-decoration:none">AgentGlim</a> · Setup</h1>
-<nav class="toc"><a href="#harnesses">Harnesses</a><a href="#jev">Jev routing</a><a href="#free">Free APIs</a><a href="#media">Paid APIs</a><a href="#custom">Custom projects</a><a href="#other">Local AI</a><a href="#budget">Default budget</a></nav></header>
+<nav class="toc"><a href="#harnesses">Harnesses</a><a href="#decisions-routing">Decisions routing</a><a href="#free">Free APIs</a><a href="#media">Paid APIs</a><a href="#custom">Custom projects</a><a href="#other">Local AI</a><a href="#budget">Default budget</a></nav></header>
 <main>
   <section class="card" id="intro"><h2>Set up AgentGlim for your tools</h2><p class="meta" id="introTxt">Loading...</p></section>
   <section class="card" id="harnesses"><h2>Harnesses</h2><p class="meta">The coding agents you use. Turn off the ones you don't: their cards, provider rows and limit bars are hidden on the dashboard.</p><div id="hList"></div>  <div id="subs"><h3>Your plans for these harnesses</h3><p class="meta">Flat-price plans you pay for. Only these get a limit card and a Subscription card.</p><p class="meta" id="priceCheck"></p><div id="priceChanges" role="status"></div><div id="sList"></div><div id="resetsSetup"></div></div></section>
-  <section class="card" id="jev"><h2>Jev routing</h2><p class="meta">Jev picks the model, harness and reasoning effort for each subagent job.</p><div id="jList"></div></section>
+  <section class="card" id="decisions-routing"><h2>Decisions routing</h2><p class="meta">The router model (jev, or gemini-decision once it is set up) picks the model, harness and reasoning effort for each subagent job.</p><div id="jList"></div></section>
   <details class="card" id="free"><summary><h2>Free APIs and accounts</h2></summary><p class="meta" id="freeTxt">Free tiers the worker lanes can use. Sign up, then paste the key into your .env. Key values are never shown here: only whether one is set.</p><div id="fList"></div></details>
   <details class="card" id="media"><summary><h2>Paid APIs</h2></summary><p class="meta">Voice, sound effects and music. Owner sessions only: plan runs never use these keys.</p><div id="mList"></div></details>
   <details class="card" id="custom"><summary><h2>Custom projects</h2></summary><p class="meta">Your own projects, shown as cards in the dashboard's Custom projects section. Point at a folder (file and folder counts, last change) or a data file (.json items, done/total progress, row counts for .csv/.ndjson). Read-only.</p><div id="cList"></div><button type="button" id="cAdd" style="margin-top:8px">+ Add project</button></details>
@@ -65,23 +66,23 @@ function draw() {
     return `<div class="row"><span></span><span class="nm">${esc(a.name)}</span>${badge(k.found)}
     <div class="sub">${esc(a.note)} <a href="${esc(a.signup)}" target="_blank" rel="noopener">Sign up / get a key</a>
     ${keyRows(`api-${a.id}`,a.env[0])}${a.env.map((n) => { const p = k.parts.find((x) => x.name === n); return `<div class="copy">paste into .env as <code>${esc(n)}=</code>${copyBtn(n + '=')}<span class="meta">${p?.source ? `set (from ${esc(p.source)})` : 'not set'}</span></div>`; }).join('')}</div></div>`; }).join('');
-  const j = d.jev;
-  $('jList').innerHTML = `<div class="row"><input type="checkbox" id="jevOn" ${C.jev.on ? 'checked' : ''}><label class="nm" for="jevOn">Route subagents through Jev</label>${badge(j.keySet, 'key set', 'key not set')}
-    <div class="sub"><span id="jevMode"></span> <a href="https://typesafe.ai" target="_blank" rel="noopener">Sign up / get a key</a>
+  const j = d.decisions || d.jev, dr = C.decisions || C.jev || { on: true };
+  $('jList').innerHTML = `<div class="row"><input type="checkbox" id="decisionsOn" ${dr.on ? 'checked' : ''}><label class="nm" for="decisionsOn">Route subagents through Decisions routing</label>${badge(j.keySet, 'key set', 'key not set')}
+    <div class="sub"><span id="decisionsMode"></span> Router model: <b>${esc(j.router || 'jev')}</b>. <a href="https://typesafe.ai" target="_blank" rel="noopener">Sign up / get a jev key</a>
     <div class="copy">paste into .env as <code>JEV_API_KEY=</code>${copyBtn('JEV_API_KEY=')}<span class="meta">${j.source ? `set (from ${esc(j.source)})` : 'not set'}</span></div>
-    <p>Routes file: <code>${esc(j.routes)}</code> · <a href="/routing">Open Routing</a></p>
-    <button type="button" id="jevTest">Test routing</button> <span id="jevResult" role="status" aria-live="polite"></span></div></div>`;
-  const mode = () => { $('jevMode').textContent = $('jevOn').checked ? 'Jev routing is on.' : 'Jev routing is off. Fallback: Sonnet.'; };
-  $('jevOn').onchange = mode; mode();
-  $('jevTest').onclick = async () => {
-    $('jevTest').disabled = true; $('jevResult').textContent = 'Testing routing (up to 60 seconds)...';
+    <p>Routes file: <code>${esc(j.routes)}</code> · <a href="/decisions-routing">Open Decisions routing</a></p>
+    <button type="button" id="decisionsTest">Test routing</button> <span id="decisionsResult" role="status" aria-live="polite"></span></div></div>`;
+  const mode = () => { $('decisionsMode').textContent = $('decisionsOn').checked ? 'Decisions routing is on.' : 'Decisions routing is off. Fallback: Sonnet.'; };
+  $('decisionsOn').onchange = mode; mode();
+  $('decisionsTest').onclick = async () => {
+    $('decisionsTest').disabled = true; $('decisionsResult').textContent = 'Testing routing (up to 60 seconds)...';
     try {
-      const r = await fetch('/api/setup/jev/test', { method: 'GET', cache: 'no-store' });
+      const r = await fetch('/api/setup/decisions/test', { method: 'GET', cache: 'no-store' });
       const result = await r.json();
       if (!r.ok || result.error) throw new Error(result.error || `HTTP ${r.status}`);
-      $('jevResult').textContent = `pick: ${result.pick} · p: ${result.p} · effort: ${result.effort}`;
-    } catch (e) { $('jevResult').textContent = e.message; }
-    finally { $('jevTest').disabled = false; }
+      $('decisionsResult').textContent = `pick: ${result.pick} · p: ${result.p} · effort: ${result.effort}`;
+    } catch (e) { $('decisionsResult').textContent = e.message; }
+    finally { $('decisionsTest').disabled = false; }
   };
   $('mList').innerHTML = `<div class="row"><span></span><span class="nm">ElevenLabs</span>${badge(d.eleven)}<div class="sub">Credits and spend on the dashboard's ElevenLabs card. <a href="/#elCard">Open the ElevenLabs card</a> · <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">get a key</a>
     <div class="copy">paste into .env as <code>ELEVENLABS_API_KEY=</code>${copyBtn('ELEVENLABS_API_KEY=')}<span class="meta">the key needs "User: read"</span></div></div></div>`;
@@ -141,7 +142,7 @@ function collect() {
   for (const el of document.querySelectorAll('[data-h]')) C.harnesses[el.dataset.h] = el.checked;
   for (const el of document.querySelectorAll('[data-s]')) C.subs[el.dataset.s].on = el.checked;
 
-  C.jev = { on: $('jevOn').checked };
+  C.decisions = { on: $('decisionsOn').checked }; C.jev = { ...C.decisions }; // "jev" = old key, kept in step
   for(const row of document.querySelectorAll('[data-entry]')) {const entry=C.subs[row.dataset.sub].entries[+row.dataset.entry];entry.tier=row.querySelector('[data-tier]').value;entry.price=row.querySelector('[data-price]').value==='' ? null : +row.querySelector('[data-price]').value;entry.credential=row.querySelector('[data-credential]').value.trim();}
   C.guard={autoStopHours:+$('autoStop').value || 0}; C.budget={apiDailyUsd:+$('apiBudget').value};
   for (const k of ['llamacpp', 'ollama']) { C.local[k].on = q(`[data-loc=${k}]`).checked; C.local[k].endpoint = q(`[data-ep=${k}]`).value.trim(); }

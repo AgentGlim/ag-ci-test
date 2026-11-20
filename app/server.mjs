@@ -19,10 +19,12 @@
 // Serves the dashboard at /, a JSON snapshot at /api/snapshot and a server-sent
 // event stream at /api/stream (one snapshot every 5 s). Appends a one-line summary
 // per minute to data/history.ndjson so charts survive restarts.
+import { reviewLoopRows } from '../harness/bin/loop-events.mjs';
 import './undici-guard.mjs'; // before everything: logs and survives undici's assert(!this.paused) fetch race (2026-11-06)
 import './env.mjs'; // first: API keys and settings from <repo>/.env (process env wins; ~/.bashrc fallback is deprecated)
 import { ENV_FILE, keyStatuses } from './env.mjs'; // Setup page shows where keys go
 import fs from 'node:fs';
+import { installQueueRows } from './install-queue-view.mjs';
 import os from 'node:os';
 import { listProcesses, readMemoryInfo, readStat, procRoot, refreshWindowsProcessStats } from './proc.mjs';
 import path from 'node:path';
@@ -32,7 +34,8 @@ import { CycleService } from './development-cycle/service.mjs';
 import { cycleRoutes } from './development-cycle/http.mjs';
 import { liveStatus } from './refresh-status.mjs';
 import { roleModelsView } from './roles.mjs';
-import { routingView, saveFeedback } from './routing.mjs'; // Jev routing dashboard
+import { routingView, saveFeedback } from './routing.mjs'; // Decisions routing dashboard (was Jev routing)
+import { PAGE as DECISIONS_PAGE, LEGACY_PAGES as DECISIONS_LEGACY_PAGES, canonicalApi as decisionsApi, API as DECISIONS_API, FEEDBACK_API as DECISIONS_FEEDBACK_API, SETUP_API as DECISIONS_SETUP_API, wireKey as decisionsWireKey } from './decisions-routing.mjs';
 import { ensureDefaultGoals, syncGoals } from './goals-sync.mjs'; // Goals section in Status
 // Dev copy (repo split): AGENTGLIM_DEV=1 turns off everything that writes into the shared harness or
 // spends money: the write routes in DEV_BLOCKED, the Claude usage refresh, the approvals page rebuild, the Jev priority
@@ -57,6 +60,7 @@ import './model-icons.js'; // sets globalThis.ModelIcons (shared with the dashbo
 import { ELEVEN_USAGE, subscription as elevenSub, rates as elevenRates } from './elevenlabs.mjs'; // ElevenLabs card + ledger
 import { FINISHED_MAX_DAYS, lastDoneAt, finishedWithin } from './finished.mjs';
 import { sectionOf } from './sections.mjs'; // one plan, one section: Active builds > Pipeline (owner 2026-11-13)
+import { runModeForPlan } from './run-mode.mjs'; // F57: project vs single on every Active builds row
 import { resolve as resolveModel, evidenceFromDir, approveAlias, askCheapModel, llmCached, canonicalModel, KIND_MODEL } from './model-review.mjs';
 import { providerKeyEntries } from './setup.mjs';
 import { classify, keyOf, kindOf, ruleClass, askJev, approve, loadApproved, agentKinds, priceOf, AGENT_SH, WORKER_SH, PROVIDERS, CLASSES, JEV_USAGE } from './classify.mjs';
@@ -129,6 +133,7 @@ import { makeOthers } from './others.mjs'; // "Other projects" table: ~/dev/proj
 import { watcherRow } from './superagent.mjs'; // Agentglim SuperAgent row: the plans SuperAgent session and its live helper agents
 import { sendToAgent, sendStatus, sendConfig } from './send-to-agent.mjs'; // Approvals "Send to agent" adapters
 import { inboxResendStatus, startInboxResend } from './inbox-resend.mjs'; // unanswered chat messages: wake nudges, .resent marks, status line
+import { readPlanStatus, projectAttempts, foldAttempts, historicalFailure, epochOf, STATUS_POLL_MS } from './plan-status.mjs';
 import { archiveRun, archivedMap, groupsOf } from './subitems-archive.mjs'; // finished sub-items -> data/subitems-archived.json every 30 min, pure code
 import { subProjects } from './subprojects.mjs'; // whole plans merged into another project (51-54 into 03, 55 into 68), drawn as cards under the parent row
 import { makeTrials } from './trials.mjs'; // Trials block on the Status card
@@ -146,6 +151,7 @@ import { planDirs, planTitle, foldNotes, planCategory, planIconsFor } from './pl
 import { usagePoller, procGuard, portableRoute, startPortable, portableState, driverActive } from './portable.mjs';
 import { watchersView } from './heartbeats.mjs'; // SuperAgent heartbeats: private data plus plans-harness beats, read fresh per view
 import { subagentStatus } from './subagent-status.mjs';
+import { sessionShells, sessionWorkRows } from './session-work.mjs';
 import { subscriptionTotals } from './price-data.mjs';
 import { liveStatus as displayLiveStatus } from './live-status.mjs';
 import { localStatus, localSwitch } from './local.mjs'; // Local status section
@@ -164,7 +170,7 @@ import { watcherSnapshot } from './heartbeats.mjs'; // one reader for every Supe
 import { currentVersion, checkForUpdate, updateCheckEnabled, versionStatus } from './update-check.mjs'; // newer-release notice
 import { makeBuildId } from './build-id.mjs'; // page build id: the dashboard reloads itself when the page code changes
 import { PLANS, WORK, DATA, RUN as RUN_DIR, PROJECTS, HOME, GOALS, setupState, pathsInfo } from './paths.mjs'; // AGENTGLIM_PLANS / AGENTGLIM_WORK / AGENTGLIM_DATA
-import { detect as setupDetect, loadSetup, saveSetup, completeSetup, setupView, jevSetupEndpoint, FREE_APIS, HARNESSES, SUBS, setupCatalog, credentialSet } from './setup.mjs'; // first-run Setup page (2026-11-11)
+import { detect as setupDetect, loadSetup, saveSetup, completeSetup, setupView, decisionsSetupEndpoint, FREE_APIS, HARNESSES, SUBS, setupCatalog, credentialSet } from './setup.mjs'; // first-run Setup page (2026-11-11)
 const RUN = RUN_DIR;
 // tracked jobs: jobs-track writes one JSON per job here; the reaper marks ended ones done/failed
 const TJ_DIR = `${DATA}/tracked-jobs`;
@@ -179,8 +185,16 @@ function boardPolicy() {
 function boardClearedNotice(n, b) {
   return !!b && n.project === b.project && ['failed', 'stopped'].includes(n.outcome) && n.ended && n.ended <= b.cutoff;
 }
-const boardUnseen = () => { const b = boardPolicy(); return DA.unseenOf(DA_DIR).filter((x) => !boardClearedNotice(x.n, b)); };
-const trackedNow = () => { if (Date.now() - tjCache.at > 10000) { /* 10 s (was 2 s): CPU fix 2026-11-13 */ const activity = subagentStatus(liveJobs(readTracked(TJ_DIR))); const all = activity.jobs; tjCache = { at: Date.now(), subagents:activity, g: groupJobs(visibleJobs(all), { folds: foldNotes(PLANS) }), feats: saveFeatures(FEAT_FILE, all) }; doneAckSweep(all); } return tjCache.g; };
+const boardUnseen = () => {
+  const b = boardPolicy(); let states = {};
+  try { states = JSON.parse(readText(`${RUN}/state.json`)).projects || {}; } catch {}
+  const raw = tjCache.subagents?.jobs || [], folded = foldAttempts(raw);
+  const superseded = new Set(folded.flatMap(j => (j.retryHistory || []).flatMap(h => [h.id, ...(h.rawIds || [])])));
+  return DA.unseenOf(DA_DIR).filter(x => !boardClearedNotice(x.n, b) && String(x.n.rc) !== '75'
+    && !(x.n.ids || [x.key]).some(id => superseded.has(id))
+    && !historicalFailure(x.n, epochOf(states[x.n.project])));
+};
+const trackedNow = () => { if (Date.now() - tjCache.at > 10000) { /* 10 s (was 2 s): CPU fix 2026-11-13 */ const activity = subagentStatus(liveJobs(readTracked(TJ_DIR))); const all = activity.jobs; tjCache = { at: Date.now(), subagents:activity, g: groupJobs(visibleJobs(all), { folds: foldNotes(PLANS) }), feats: saveFeatures(FEAT_FILE, foldAttempts(all)) }; doneAckSweep(all); } return tjCache.g; };
 // done-ack (2026-11-14): finished-job notices that stay until seen. The sweep runs in the same pass that sees a job leave
 // "running", so one snapshot drops the running icon and adds the finished one (app/done-ack.mjs).
 const DA_DIR = DA.storeDir(DATA);
@@ -594,10 +608,20 @@ const relUnder = (child, parent) => {
   const c = slashPath(child), base = slashPath(parent);
   return c === base ? '' : c.startsWith(`${base}/`) ? c.slice(base.length + 1) : null;
 };
+let sessionShellRows = [];
 function scanLive() {
   refreshPanes();
+  const processes = listProcesses(), repoPlanMap = repoPlans();
+  sessionShellRows = sessionShells({ rows: processes, projectOf: (cwd) => {
+    if (!cwd) return null;
+    const local = relUnder(toPlans(cwd), PLANS);
+    if (local === '') return 'SuperAgent';
+    if (local !== null && /^\d{2}-/.test(local)) return local.split('/')[0];
+    const project = relUnder(cwd, PROJECTS)?.split('/')[0];
+    return repoPlanMap[project] || (goodProject(project) ? project : null);
+  } });
   const s = new Set(), m = new Map(), tree = new Map(), agentOut = new Map(), ttys = new Set(), other = []; let armed = false;
-  for (const { pid: p, ppid, state, args: a, cwd: processCwd, tty } of listProcesses()) {
+  for (const { pid: p, ppid, state, args: a, cwd: processCwd, tty } of processes) {
     tree.set(p, { state, ppid });
     const argv = a.map(slashPath);
     const i = argv.findIndex((x) => x.endsWith('/agent.sh'));
@@ -1283,17 +1307,8 @@ function projects(state) {
         return { name: t, status, model: (live || wj.at(-1))?.model || null, slot: (live || wj.at(-1))?.slot || null };
       });
     }
-    let progress = null;
-    const revRounds = [];
-    for (let n = p.rev?.n || 0; n >= 3; n--) revRounds.push(`v${n}-r3`, `v${n}-r2`, `v${n}-r1`);
-    for (const r of [...revRounds, 'v2-r3', 'v2-r2', 'v2-r1', 'v1-r3', 'v1-r2', 'v1-r1']) {
-      const e = auditEstimateOf(`${b}/${r}/AUDIT.md`);
-      if (e) { progress = { round: r, ...e }; break; }
-    }
-    if (progress && !progress.word) { try { progress.word = auditSays(readText(`${b}/${progress.round}/AUDIT.md`))?.word || null; } catch {} } // PASS / PARTIAL / FAIL of the last audit
-    if (dir === integrations.remotePlan && !progress) progress = featureAudit();
-    // no round audits (plans built outside the driver, e.g. onboarded 72-82): the final verify pass rate (2026-11-12)
-    if (!progress && p.stage === 'done') { const vt = readText(`${b}/VERIFY.md`), pct = verifyRate(vt); if (pct != null) progress = { round: 'verify', pct, text: (vt.split('\n').find((l) => l.trim()) || '').replace(/[*_`]/g, '').slice(0, 200), word: pct >= 90 ? 'PASS' : 'PARTIAL' }; }
+    const planStatus = readPlanStatus(PLANS, dir, p);
+    const progress = planStatus.progress;
     const pj = jobsBy.get(dir) || [];
     const tracked = trackedNow().plans.get(dir) || [];
     const trackedLive = tracked.filter((j) => j.status === 'running' && j.kind !== 'autonomous').length; // autonomous ones are driver jobs, counted below
@@ -1321,7 +1336,7 @@ function projects(state) {
     const autoComplete = exists(`${PLANS}/${dir}/AUTO_COMPLETE`) ? (readText(`${PLANS}/${dir}/AUTO_COMPLETE`).trim().split('\n')[0] || 'auto-complete (not human-verified)').slice(0, 200) : null;
     // end states (HARNESS 1.5): two only. owner-verified = NN-slug/OWNER-APPROVED (the owner signed off);
     // auto-complete = agents finished it (pipeline done, or AUTO_COMPLETE at >= 90%) with no owner sign-off. "done" is not shown.
-    const endState = approved ? 'owner-verified' : (autoComplete || p.stage === 'done') ? 'auto-complete' : null;
+    const endState = planStatus.mismatch ? 'mismatch' : approved ? 'owner-verified' : (autoComplete || p.stage === 'done') ? 'auto-complete' : null;
     const cooldownUntil = (p.cooldownUntil || 0) > Date.now() ? p.cooldownUntil : null;
     // sub-item rows on the pipeline: <plan>/_build/subitems.json {items:[{id,title,status,pct,note,updated}]}
     const sub = (() => { try { return displayLiveStatus(JSON.parse(readText(`${b}/subitems.json`)).items || [], dir, tracked); } catch { return null; } })();
@@ -1329,17 +1344,8 @@ function projects(state) {
     try { const ls = JSON.parse(readText(`${b}/features/loop-state.json`)); const num = String(ls.feature || '').split('-')[0];
       if (sub && num && ['running', 'waiting_usage', 'paused'].includes(ls.status)) { const it = sub.find((x) => String(x.id) === num && x.status === 'running'); if (it) it.agent = { step: ls.step, round: ls.round, model: ls.model, effort: ls.effort, since: ls.stepStarted, status: ls.status }; } } catch {}
     // Bounded owner runs have display stages separate from driver scheduling state.
-    let displayStage = p.stage;
-    try {
-      const br = JSON.parse(readText(`${b}/bounded-run.json`));
-      const base = `${b}/${br.directory}`;
-      const sol = Number(readText(`${base}/sol/pid`).trim());
-      const luna = Number(readText(`${base}/luna/pid`).trim());
-      if (!exists(`${base}/FINISHED.json`) && ((sol && alive(sol)) || (luna && alive(luna)))) {
-        displayStage = luna && alive(luna) ? 'v2-r2' : 'v2-r1';
-      }
-    } catch {}
-    const proj = { dir, title: planTitle(PLANS, dir), foldedInto: folds[dir]?.parent || null, merged: kids[dir] || [], noState: !!p.noState, sub, tracked, features: featuresOf(dir), stage: displayStage, stageIndex: colOf(displayStage), attempts: p.attempts, round, held, approved, autoComplete, endState, cooldownUntil, tasks, progress, rev, activeBuild, liveBuild, goal, cat: planCategory(dir, cats, folds, planTitle(PLANS, dir)),
+    let displayStage = planStatus.stage;
+    const proj = { dir, title: planTitle(PLANS, dir), foldedInto: folds[dir]?.parent || null, merged: kids[dir] || [], noState: !!p.noState, sub, tracked, features: featuresOf(dir), planStatus, stage: displayStage, stageIndex: colOf(displayStage), attempts: p.attempts, round, held, approved, autoComplete, endState, cooldownUntil, tasks, progress, rev, activeBuild, liveBuild, goal, cat: planCategory(dir, cats, folds, planTitle(PLANS, dir)),
       tokens: pj.reduce((n, j) => n + j.tokens.input + j.tokens.output + j.tokens.cacheRead, 0),
       cost: pj.reduce((n, j) => n + j.cost, 0), active: pj.filter((j) => j.active).length + trackedLive + (manualSessions.get(dir) || []).length + (goal && ['starting', 'running', 'paused'].includes(goal?.status) ? 1 : 0),
       // models of the plan's most recent step (icons on 03 sub-rows whose plan is idle)
@@ -1362,10 +1368,33 @@ function projects(state) {
     proj.agents = pop.workers; proj.agentsIdle = pop.idle; proj.agentsUnknown = pop.unknown;
     proj.active = pop.counts.live;
     { const g = daRows.get(dir); proj.doneAck = g ? g.items : []; proj.doneAckMore = g ? g.more : 0; proj.doneAckUnseen = g ? g.n : 0; proj.doneAckKeys = g ? g.keys : []; } // Q3: unseen keeps the row in Active builds
+    syncPlanProjection(proj, p);
     proj.section = sectionOf(proj); // Active builds or Pipeline, never both (sections.mjs)
+    if (proj.section === 'active') proj.runMode = runModeForPlan({ dir, stage: displayStage }); // F57 run-mode rule (owner 2026-11-19)
     out.push(proj);
   }
   return out.sort((a, b) => a.dir.localeCompare(b.dir));
+}
+
+// Shared by the full scan and the lightweight status poll. Raw records remain intact.
+function syncPlanProjection(proj, state) {
+  const records = [...(proj.tracked || []), ...(proj.features || []).filter(f => !(proj.tracked || []).some(j => j.id === f.id))];
+  const projection = projectAttempts(records, state);
+  const activeIds = new Set(projection.active.map(j => j.id));
+  const byId = new Map(projection.active.map(j => [j.id, j]));
+  proj.tracked = (proj.tracked || []).filter(j => activeIds.has(j.id)).map(j => byId.get(j.id));
+  proj.features = (proj.features || []).filter(j => activeIds.has(j.id)).map(j => byId.get(j.id));
+  proj.attemptHistory = projection.history;
+  const sub = projectAttempts(proj.sub || [], state);
+  proj.sub = proj.sub ? sub.active : null; proj.subHistory = sub.history;
+}
+function refreshPlanStatuses(snapshot) {
+  let states; try { states = JSON.parse(readText(`${RUN}/state.json`)).projects; } catch { return; }
+  if (!states || typeof states !== 'object') return;
+  // Rebuild from source rows, not the last projection: reopen/rollback can restore history.
+  const fresh = projects({ projects: states });
+  snapshot.projects = fresh;
+  snapshot.planStatusCheckedAt = Date.now();
 }
 
 // The Observatory's own row in the Active builds table: its updates are tracked like an
@@ -1523,18 +1552,18 @@ function buildDigest(base) {
     const live = (p.working || []).filter((w) => w.role !== 'manual'), manual = (p.working || []).some((w) => w.role === 'manual' && !w.idle);
     const stages = (p.rev?.cols || STAGES).filter(Boolean);
     const idx = Math.max(0, stages.indexOf(p.stage));
-    const state = p.stage === 'done' ? 'done' : /-gate$/.test(p.stage) && !p.held ? 'gate' : live.length ? 'running'
+    const state = p.planStatus?.mismatch ? 'mismatch' : p.stage === 'done' ? 'done' : /-gate$/.test(p.stage) && !p.held ? 'gate' : live.length ? 'running'
       : p.held ? 'held' : p.cooldownUntil && p.cooldownUntil > now ? 'cooldown' : 'waiting';
     // the "finished in the last N days" strip (up to 7 days, the page filters): every plan now done, even ones the line below drops
-    if (state === 'done') { const dAt = lastDoneAt(e); if (dAt && now - dAt < FINISHED_MAX_DAYS * DAY) finishedRows.push({ dir: p.dir, at: dAt, pct: auditEstimate(readText(`${PLANS}/${p.dir}/_build/VERIFY.md`))?.pct ?? verifyRate(readText(`${PLANS}/${p.dir}/_build/VERIFY.md`)) ?? p.progress?.pct ?? null }); }
+    if (state === 'done') { const dAt = lastDoneAt(e); if (dAt && now - dAt < FINISHED_MAX_DAYS * DAY) finishedRows.push({ dir: p.dir, at: dAt, pct: p.planStatus?.pct ?? null }); }
     // keep what a status answer would mention: anything not held/done, plus held/done plans that moved in the last day
     // Done plans that last moved 1-7 days ago go to olderDone: the page adds them to the table when its day window covers them (finished.mjs).
     const dropped = (state === 'done' || state === 'held') && !(last && now - last.t < DAY) && !manual && p.dir !== integrations.auditPlan && p.dir !== integrations.remotePlan; // Configured feature plans keep their verification and feature list visible.
     if (dropped && !(state === 'done' && last && now - last.t < FINISHED_MAX_DAYS * DAY)) continue;
     const into = dropped ? olderDone : plans;
     const b = `${PLANS}/${p.dir}/_build`, doneAt = state === 'done' ? ([...e].reverse().find((x) => x.verb === 'advance' && x.text.endsWith('-> done (ok)'))?.t || null) : null;
-    const says = p.progress ? auditSays(readText(`${b}/${p.progress.round}/AUDIT.md`), p.progress.text) : null, rn = state === 'done' ? null : roundNotes(p.dir, p.stage);
-    const final = state === 'done' ? (auditEstimate(readText(`${b}/VERIFY.md`))?.pct ?? verifyRate(readText(`${b}/VERIFY.md`)) ?? p.progress?.pct ?? null) : null;
+    const says = p.progress ? { word: p.progress.word, verdict: p.planStatus?.reason || p.progress.text } : null, rn = state === 'done' ? null : roundNotes(p.dir, p.stage);
+    const final = state === 'done' ? p.planStatus?.pct ?? null : null;
     const since = [...e].reverse().find((x) => (x.verb === 'advance' && x.text.endsWith(`-> ${p.stage} (ok)`)) || (x.verb === 'launch' && x.text.startsWith(p.stage)))?.t || p.activeBuild?.gateAt || null;
     // previous audit estimate, for the trend arrow
     let prev = null;
@@ -1547,8 +1576,8 @@ function buildDigest(base) {
     const rounds = stages.filter((x) => /^v\d+-r\d$/.test(x) && x.startsWith(p.stage.split('-')[0] + '-')).length || 3;
     const c = counts.find((x) => x.project === p.dir);
     const nxt = state === 'done' ? null : stages[idx + 1] || null;
-    into.push({ dir: p.dir, cat: p.cat, state, stage: p.stage, headline: p.held && /-gate$/.test(p.stage) ? 'on hold: the owner works on it by hand' : stagePlain(p.stage, rounds), stages, idx, rev: p.rev?.n || null,
-      audit: p.progress ? { pct: p.progress.pct, round: p.progress.round } : null, prev,
+    into.push({ dir: p.dir, cat: p.cat, state, stage: p.stage, headline: p.planStatus?.mismatch ? p.planStatus.reason : p.held && /-gate$/.test(p.stage) ? 'on hold: the owner works on it by hand' : stagePlain(p.stage, rounds), stages, idx, rev: p.rev?.n || null,
+      planStatus: p.planStatus, audit: p.progress ? { pct: p.progress.pct, round: p.progress.round } : null, prev,
       models: live.map((w) => ({ role: w.role, provider: w.provider, model: w.model, task: w.task || '', paused: !!w.paused })),
       since, held: p.held ? String(p.held).slice(0, 160) : null, cooldownUntil: p.cooldownUntil || null,
       last: last ? { t: last.t, text: `${last.verb} ${last.text}`.slice(0, 160) } : null,
@@ -1557,11 +1586,11 @@ function buildDigest(base) {
       paused: live.filter((w) => w.paused).map((w) => `${w.role} (${w.model || w.provider})`), doneAt, final, features: p.dir === integrations.auditPlan ? featureList() : null,
       cost: p.cost || 0, revLabel: p.rev?.label || null, ...planExtras(p.dir, stages, stProjects[p.dir]?.history) });
   }
-  const order = { running: 0, gate: 1, cooldown: 2, waiting: 3, done: 4, held: 5 };
+  const order = { mismatch: -1, running: 0, gate: 1, cooldown: 2, waiting: 3, done: 4, held: 5 };
   plans.sort((a, b) => order[a.state] - order[b.state] || a.dir.localeCompare(b.dir));
   olderDone.sort((a, b) => b.last.t - a.last.t);
   const all = base.projects || [];
-  const tally = { running: 0, waiting: 0, gate: 0, cooldown: 0, done24: 0, held: all.filter((p) => p.held && p.stage !== 'done').length, doneAll: all.filter((p) => p.stage === 'done').length, total: all.length };
+  const tally = { mismatch: 0, running: 0, waiting: 0, gate: 0, cooldown: 0, done24: 0, held: all.filter((p) => p.held && p.stage !== 'done').length, doneAll: all.filter((p) => p.stage === 'done' && !p.planStatus?.mismatch).length, total: all.length };
   for (const x of plans) if (x.state === 'done') { if (x.doneAt) tally.done24++; } else if (tally[x.state] != null && x.state !== 'held') tally[x.state]++;
   let lim = []; try { lim = (budget().limits || []).map((l) => ({ id: l.id, name: l.name, provider: l.provider, windows: (l.windows || []).filter((w) => ['5h', '7d'].includes(w.label)).map((w) => ({ label: w.label, pct: w.pct, resetsAt: w.resetsAt })) })); } catch {}
   const health = healthNow(base), stalled = plans.filter((x) => x.state === 'running' && x.idleMin != null && x.idleMin >= 40).map((x) => ({ dir: x.dir, stage: x.stage, idleMin: x.idleMin }));
@@ -1589,6 +1618,7 @@ function buildDigest(base) {
   const LOSS = /\b(delet|overwr|wiped|lost|destroy|removed|truncat|clobber)/i, flags = [];
   if (cloudDenied) flags.push({level:'critical',where:'cloud access',dir:'',text:'Claude cloud access denied (HTTP 403). Upload retries blocked until access is restored.'});
   if (!base.driverAlive && !base.driverRestarting) flags.push({ level: 'critical', where: 'driver', dir: '', text: 'The driver is off. Nothing moves until it restarts.' });
+  for (const x of plans.filter(p => p.planStatus?.mismatch)) flags.push({ level: 'critical', where: 'plan-status', dir: x.dir, text: x.planStatus.reason });
   for (const x of stalled) flags.push({ level: 'critical', where: 'stall', dir: x.dir, text: `wrote nothing for ${x.idleMin} min on ${x.stage}` });
   for (const x of plans) {
     for (const w of x.paused) flags.push({ level: 'warn', where: 'paused', dir: x.dir, text: `${w} is paused by a usage limit` });
@@ -1608,7 +1638,7 @@ function buildDigest(base) {
   const speed = speedNow(base), prio = ap?.priorities || { projects: {} };
   let blockers = null, optimize = [], deep = {}; try { blockers = rankBlockers({ items: ap?.items || [], prio, plans }); } catch (e) { console.error('blockers failed', e); } try { const o = optimizeTips({ lines: readText(`${RUN}/driver.log`).split('\n').slice(-60000), plans, health, speed, tally, prio }); optimize = o.tips; deep.opt = { stops: o.stops, spend: o.spend, runs: o.runs, heavy: o.heavy }; } catch (e) { console.error('optimize failed', e); }
   try { deep.flags = enrichFlags(flags, { plans, items: ap?.items || [], apPages: ap?.apPages || {}, lim }); deep.health = healthDeep(health); deep.watcher = watcherDeep(); } catch (e) { console.error('deep flags failed', e); } // the Warnings and flags view
-  return { at: now, next: now + DIGEST_MS, driverAlive: base.driverAlive, driverRestarting: !!base.driverRestarting, tally, limits: lim, plans, olderDone, line, you, finished, health, stalled, watcher: watcherSaid(), flags, speed, lastLaunch, blockers, optimize, deep, apPages: ap?.apPages || {} };
+  return { at: now, next: now + DIGEST_MS, driverAlive: base.driverAlive, driverRestarting: !!base.driverRestarting, tally, limits: lim, plans, olderDone, line, you, finished, installQueue: installQueueRows(RUN), reviewLoops: reviewLoopRows(RUN, PLANS), health, stalled, watcher: watcherSaid(), flags, speed, lastLaunch, blockers, optimize, deep, apPages: ap?.apPages || {} };
 }
 function statusDigest(base) {
   if (!digestCache || digestCache.driverAlive !== base.driverAlive || digestCache.driverRestarting !== !!base.driverRestarting || digestCache.tally?.agents !== base.population?.counts.live || Date.now() - digestCache.at >= DIGEST_MS || claimsMtime() > digestCache.at) { // claims/pins changed: the watcher checked something
@@ -1690,6 +1720,7 @@ function observatoryRow() {
     progress: ups.length ? { pct: Math.round(100 * done / ups.length), label: `${done}/${ups.length} updates`, tip: `<b>${done} of ${ups.length}</b> Observatory updates done`
       + open.map((u) => `<br>${u.status}: ${u.title}`).join('') } : null,
     activeBuild: { note: 'Observatory updates', gateAt: cur === 1 && review.length ? Math.min(...review) : null },
+    runMode: { mode: 'single', label: 'single', reason: 'AgentGlim feature update (F#/T#): one builder plus review' }, // F57
     working: man.map(manualWork) };
 }
 
@@ -1927,6 +1958,9 @@ function view(base, f) {
   const all = [...jobs.values()].filter((j) => !f.excl.has(provOf(j)));
   const inRange = all.filter((j) => j.active || (j.started && j.started < (f.to || Infinity) && (j.ended || now) >= f.from));
   const active = all.filter((j) => j.active);
+  trackedNow();
+  const sessionWork = sessionWorkRows(tjCache.subagents?.jobs || [], base.watcherRow?.live || [], sessionShellRows, { now, excluded: f.excl });
+  sessionWork.sort((a, b) => b.started - a.started);
   inRange.sort((a, b) => (b.active - a.active) || (b.started || 0) - (a.started || 0));
   const days = Math.max(1, Math.ceil((hi - (f.from || first)) / 86400e3));
   updateSubscriptionPrices();
@@ -1960,6 +1994,7 @@ function view(base, f) {
     },
     byClass, byProvider, series, spendSeries, value: valueSummary(rs, f),
     others: (() => { try { return others.view(f); } catch (e) { console.error('other projects view failed', e); return null; } })(),
+    sessionWork: sessionWork.slice(0, 300),
     agents: inRange.slice(0, 300).map((j) => ({ project: j.project, role: j.role, task: j.task, step: j.step, kind: j.kind, provider: provOf(j),
       class: j.classified && !CLASS[provOf(j)] ? j.classified.class : recClass({ provider: provOf(j), model: j.model }), active: j.active, rc: j.rc,
       model: j.model, slot: j.slot, skip: j.skip, started: j.started, ended: j.ended, lastMsg: j.lastMsg, tokens: j.tokens, cost: j.cost || j.estCost || 0, calls: j.calls,
@@ -1992,6 +2027,7 @@ if (nativeWindowsProcessStats) void backgroundScan();
 if (!DEV) setInterval(agyPriceRefresh, 24 * 3600e3); // Antigravity live prices, daily
 // CPU fix 2026-11-13: 30 s while a dashboard is open (pushes stay every 15 s), 60 s when nobody watches
 let lastScan = Date.now();
+setInterval(() => { try { refreshPlanStatuses(base); } catch (e) { console.error('plan status poll failed', e.message); } }, STATUS_POLL_MS);
 setInterval(() => { if (Date.now() - lastScan < (clients.size ? 28000 : 58000)) return; lastScan = Date.now(); void backgroundScan(); }, 15000); // 15 s (was 5 s): desktop load
 // sub-item tidy: every 30 min, and once a minute after start, finished sub-items are archived in
 // data/subitems-archived.json (pure code, no AI call); the dashboard reads it from the snapshot and folds them away
@@ -2454,7 +2490,7 @@ const dashboard = http.createServer(async (req, res) => {
   }
   // Setup page (2026-11-11): pick your harnesses, plans, free API keys, local models and custom projects (setup.mjs)
   if (route === '/setup' || route === '/setup.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' }); return res.end(readText(`${HERE}/setup.html`)); }
-  if (route === '/api/setup/jev' || route === '/api/setup/jev/test') return jevSetupEndpoint(req, res, route);
+  if ([DECISIONS_SETUP_API, `${DECISIONS_SETUP_API}/test`].includes(decisionsApi(route))) return decisionsSetupEndpoint(req, res, route); // /api/setup/jev[/test] = old URLs
   if (route === '/api/setup' && req.method === 'GET') { const d = setupDetect(); res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     return res.end(JSON.stringify({ config: loadSetup(d), detected: d, paths: pathsInfo(), catalog: setupCatalog(), credentialStatus:Object.fromEntries(Object.values(loadSetup(d).subs).flatMap(s => s.entries || []).map(e => [e.credential,credentialSet(e.credential)])), envFile: ENV_FILE.replace(HOME, '~') })); }
   if (route === '/api/setup' && req.method === 'POST') { if (!sameAppRequest(req.headers) || req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); return res.end(); } let b = ''; for await (const c of req) { b += c; if (b.length > 65536) { res.writeHead(413); return res.end(); } }
@@ -2476,14 +2512,16 @@ const dashboard = http.createServer(async (req, res) => {
     if (!sameAppRequest(req.headers) || req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); return res.end(); }
     return runScaffold((r) => { res.writeHead(r.ok ? 200 : 500, { 'content-type': 'application/json' }); res.end(JSON.stringify(r)); });
   }
-  // Harness page edits: queue a jev.* change through modes.mjs request; the watcher applies it (apply-queue)
+  // Harness page edits: queue a Decisions routing change (decisions.*, old jev.*) through modes.mjs request; the watcher
+  // applies it (apply-queue). The queue still takes the jev.* wire key (modes.mjs, harness-set.mjs).
   if (route === '/api/harness-setting' && req.method === 'POST') {
     if (!has(MODES_MJS)) { req.resume(); res.writeHead(501, { 'content-type': 'application/json' }); return res.end(JSON.stringify(MODES_ABSENT)); }
     let body = ''; req.on('data', (c) => { body += c; if (body.length > 1024) req.destroy(); });
     req.on('end', () => { let b; try { b = JSON.parse(body); } catch { b = {}; }
       const value = String(b.value ?? '');
-      if (!['jev.close', 'jev.notifyPicks'].includes(b.key) || !/^[a-z0-9.,-]{0,300}$/.test(value)) { res.writeHead(422, { 'content-type': 'application/json' }); return res.end('{"error":"key or value"}'); }
-      modesRun(['request', b.key, value || 'none', '--by', 'harness page'], (err, so, se) => { const code = err ? (err.code === 2 ? 422 : 500) : 200;
+      const wire = decisionsWireKey(b.key);
+      if (!wire || !/^[a-z0-9.,-]{0,300}$/.test(value)) { res.writeHead(422, { 'content-type': 'application/json' }); return res.end('{"error":"key or value"}'); }
+      modesRun(['request', wire, value || 'none', '--by', 'harness page'], (err, so, se) => { const code = err ? (err.code === 2 ? 422 : 500) : 200;
         res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify({ queued: code === 200, msg: (so || se).trim() })); }); });
     return;
   }
@@ -2492,9 +2530,11 @@ const dashboard = http.createServer(async (req, res) => {
     catch (e) { res.writeHead(500, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ error: String(e.message || e) })); }
   }
   if (route === '/roles' || route === '/roles.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' }); return res.end(readText(`${HERE}/roles.html`)); }
-  if (route === '/routing' || route === '/routing.html') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' }); return res.end(readText(`${HERE}/routing.html`)); }
-  if (route === '/api/routing' && req.method === 'GET') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache' }); return res.end(JSON.stringify(routingView())); }
-  if (route === '/api/routing-feedback' && req.method === 'POST') { // same-origin only: an Origin header is required and must be this page
+  // Decisions routing page (owner 2026-11-19, was /routing "Jev routing"): old page URLs redirect, old API URLs answer.
+  if (DECISIONS_LEGACY_PAGES.includes(route)) { res.writeHead(301, { location: DECISIONS_PAGE + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''), 'cache-control': 'no-cache' }); return res.end(); }
+  if (route === DECISIONS_PAGE || route === `${DECISIONS_PAGE}.html`) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' }); return res.end(readText(`${HERE}/routing.html`)); }
+  if (decisionsApi(route) === DECISIONS_API && req.method === 'GET') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache' }); return res.end(JSON.stringify(routingView())); }
+  if (decisionsApi(route) === DECISIONS_FEEDBACK_API && req.method === 'POST') { // same-origin only: an Origin header is required and must be this page
     if (req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403, { 'content-type': 'application/json' }); return res.end('{"error":"same-origin only"}'); }
     let body = ''; req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
     req.on('end', () => {

@@ -156,7 +156,7 @@ test('scaffold refreshes managed links, unedited copies and the old note; keeps 
     const r = scaffold(); assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /3 refreshed/);
     assert.equal(path.basename(fs.readlinkSync(path.join(bin, 'status-write.mjs'))), 'status-write.mjs');
-    assert.ok(path.resolve(bin, fs.readlinkSync(path.join(bin, 'status-write.mjs'))).startsWith(REPO), 'link points at this checkout');
+    assert.equal(fs.realpathSync(path.join(bin, 'status-write.mjs')), fs.realpathSync(path.join(REPO, 'harness/bin/status-write.mjs')), 'link points at this checkout');
     assert.notEqual(fs.readFileSync(path.join(bin, 'io-guard.sh'), 'utf8'), 'older shipped copy');
     assert.equal(fs.readFileSync(path.join(bin, 'chat-write.mjs'), 'utf8'), 'my own version');
     const note = fs.readFileSync(path.join(run, 'AGENTGLIM-HARNESS.md'), 'utf8');

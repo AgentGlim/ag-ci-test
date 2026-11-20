@@ -1,4 +1,6 @@
+import { killTree } from '../cli-spawn.mjs';
 import { waitForServerReady } from './helpers/server-ready.mjs';
+import { archiveScratch } from './helpers/weekly-scratch.mjs';
 // done-ack on an isolated server (AGENTGLIM_DEV=1, temp HOME and data): snapshot fields, Q3 section, POST/GET,
 // guards, restart keeps unseen, job-report fallback; and the harness tool (list, ack --quote, unack, count, exit codes).
 import test from 'node:test';
@@ -31,7 +33,7 @@ async function boot(stops, home) {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR, HOME: home, USERPROFILE: home, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_ENV_FILE: path.join(home, 'env'), AGENTGLIM_CONFIG: path.join(home, 'harness.json'),
     AGENTGLIM_PROJECTS: home, AGENTGLIM_PLANS: path.join(home, 'plans'), AGENTGLIM_DEV: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let err = ''; child.stderr.on('data', (s) => { err += s; });
-  const stop = async () => { if (child.exitCode !== null || child.signalCode !== null) return; const exited = once(child, 'exit'); child.kill(); await exited; };
+  const stop = () => killTree(child, { graceMs: 1000 });
   stops.push(stop);
   const port = await waitForServerReady(child);
   return { port, stop, err: () => err };
@@ -95,11 +97,12 @@ test('tool: list, count, show, ack needs --quote, unack, exit codes; works with 
   assert.equal(run('count').stdout.trim(), '0 not seen');
 });
 
-test('listener: UNSEEN hint rides on a CHAT line', (t) => {
-  const home = seed(); t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+test('listener: UNSEEN hint appears for a change of ten since the previous wake', (t) => {
+  const home = seed(); t.after(() => archiveScratch(home, t.passed ? 'passed' : 'failed', t.name, t.error));
   const run = path.join(home, 'plans/_run'); for (const d of ['audit_queue', 'chat_inbox', 'status_ask']) fs.mkdirSync(path.join(run, d), { recursive: true });
   fs.writeFileSync(path.join(run, 'chat_inbox/1700000000001.json'), '{}');
-  fs.writeFileSync(path.join(home, 'data/done-ack/x1.json'), '{}');
-  const r = spawnSync('bash', [path.join(REPO, 'harness/bin/auditq-wait.sh')], { env: { PATH: process.env.PATH, HOME: home, AGENTGLIM_RUN: run, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8' });
-  assert.match(r.stdout, /CHAT:/); assert.match(r.stdout, /UNSEEN: 1 finished jobs not seen/);
+  fs.writeFileSync(path.join(run, 'config.json'), JSON.stringify({ listener: { settleSec: 0 } }));
+  for (let i = 0; i < 10; i++) fs.writeFileSync(path.join(home, `data/done-ack/x${i}.json`), '{}');
+  const r = spawnSync('bash', [path.join(REPO, 'harness/bin/auditq-wait.sh')], { env: { PATH: process.env.PATH, HOME: home, AGENTGLIM_CONFIG: path.join(home, 'harness.json'), AGENTGLIM_RUN: run, AGENTGLIM_DATA: path.join(home, 'data'), AGENTGLIM_WAIT_ROUNDS: '1', AGENTGLIM_WAIT_POLL: '0' }, encoding: 'utf8' });
+  assert.match(r.stdout, /CHAT:/); assert.match(r.stdout, /UNSEEN: 10 finished jobs awaiting acknowledgement/);
 });

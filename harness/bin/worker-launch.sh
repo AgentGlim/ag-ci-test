@@ -5,6 +5,10 @@
 # Thin wrapper: the work is in worker-launch.mjs next to this file (bash + node, nothing else). Symlinks to this
 # file (<run>/bin/worker-launch.sh) are followed back to the AgentGlim checkout.
 SOURCE=$0
+ENTRY_DIR=$(cd -- "$(dirname -- "$SOURCE")" && pwd -P)
+if [ -f "$ENTRY_DIR/launch-queue.mjs" ]; then
+  export AGENTGLIM_RUN=$(dirname -- "$ENTRY_DIR")
+fi
 while [ -L "$SOURCE" ]; do
   BASE=$(cd "$(dirname "$SOURCE")" && pwd)
   SOURCE=$(readlink "$SOURCE")

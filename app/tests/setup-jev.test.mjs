@@ -36,7 +36,7 @@ for (const withKey of [false, true]) {
     assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store');
     const text = await r.text(), j = JSON.parse(text);
     assert.equal(j.keySet, withKey); assert.equal(j.source, withKey ? '.env' : null);
-    assert.equal(j.on, true); assert.equal(j.routingUrl, '/routing');
+    assert.equal(j.on, true); assert.equal(j.routingUrl, '/decisions-routing');
     // the private repo has harness/jev-routes.json; the public export falls back to app/jev-routes.example.json
     assert.ok(/[\\/](harness[\\/]jev-routes|app[\\/]jev-routes\.example)\.json$/.test(j.routes), j.routes);
     assert.ok(!text.includes(fixtureKey));

@@ -90,6 +90,7 @@ goal-map.json
 !/harness/bin/auditq-wait.sh
 !/harness/bin/done-ack.mjs
 !/harness/bin/auditq-wait.mjs
+!/harness/bin/auditq-triage.mjs
 !/harness/bin/worker-launch.sh
 !/harness/bin/worker-launch.mjs
 !/harness/bin/development-cycle.mjs
@@ -138,3 +139,10 @@ __pycache__/
 # F36 shared intake protocol and documentation
 !/harness/bin/build-intake.mjs
 !/docs/build-intake.md
+
+# Installed kit validation and build-review listener runtime.
+!/harness/bin/kit-postcheck.py
+!/harness/bin/kit-postcheck.sh
+!/harness/bin/loop-events.mjs
+!/harness/kit-install.sh
+!/harness/kit-postcheck.md

@@ -92,6 +92,8 @@ test('startup command -> Refresh -> listener -> status writer -> SuperAgent repl
   fs.writeFileSync(startup.heartbeat, '');
   // Use the exact copied command, including an apostrophe and shell metacharacters in this fixture's path, in the
   // shell it is written for: bash, or cmd.exe for the double-quoted Node command on native Windows.
+  const config = fs.existsSync(env.AGENTGLIM_CONFIG) ? JSON.parse(fs.readFileSync(env.AGENTGLIM_CONFIG, 'utf8')) : {};
+  fs.writeFileSync(env.AGENTGLIM_CONFIG, JSON.stringify({ ...config, listener: { settleSec: 0 } }));
   const listener = spawn(win ? startup.command : 'bash', win ? [] : ['-c', startup.command], {
     env: { ...env, AGENTGLIM_WAIT_POLL: '0.01', AGENTGLIM_WAIT_ROUNDS: '500' },
     stdio: ['ignore', 'pipe', 'pipe'], shell: win,
@@ -151,15 +153,16 @@ test('the shipped listener runs: STATUS and PENDING use the resolved run folder,
   const bash = spawnSync('bash', ['-c', 'true'], { encoding: 'utf8' });
   if (bash.status !== 0) return t.skip('bash is not available here');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ag listen-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => archiveScratch(root, t.passed ? 'passed' : 'failed', t.name, t.error));
   const dir = (name) => {
     const run = path.join(root, name);
     for (const d of ['audit_queue', 'status_ask', 'chat_inbox', 'owner_check', 'watchdog_queue', 'mode_queue', 'heartbeats']) fs.mkdirSync(path.join(run, d), { recursive: true });
+    fs.writeFileSync(path.join(run, 'config.json'), JSON.stringify({ listener: { settleSec: 0 } }));
     return run;
   };
   const wait = (run) => spawnSync('bash', [LISTENER], {
     encoding: 'utf8', timeout: 20000,
-    env: { ...process.env, AGENTGLIM_RUN: run, AGENTGLIM_PLANS: path.join(root, 'plans'), AGENTGLIM_WAIT_ROUNDS: '2', AGENTGLIM_WAIT_POLL: '0' },
+    env: { ...process.env, AGENTGLIM_CONFIG: path.join(root, 'harness.json'), AGENTGLIM_RUN: run, AGENTGLIM_PLANS: path.join(root, 'plans'), AGENTGLIM_WAIT_ROUNDS: '2', AGENTGLIM_WAIT_POLL: '0' },
   });
 
   const modes = dir('modes');
@@ -178,10 +181,9 @@ test('the shipped listener runs: STATUS and PENDING use the resolved run folder,
   r = wait(asks);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^STATUS: 1700000000000\.json/);
-  assert.doesNotMatch(r.stdout, /^CHAT:/m, 'Refresh takes precedence over a stale scheduled chat');
-  assert.ok(fs.existsSync(staleChat), 'prioritizing Refresh preserves the unanswered chat');
-  // the hint is bash's printf %q of "$RUN/bin/status-write.mjs"; on Windows RUN is the C:\ path, so backslashes are escaped too
-  const hint = win ? `${asks}/bin/status-write.mjs`.replace(/[\\ ]/g, '\\$&') : path.join(asks, 'bin', 'status-write.mjs').replaceAll(' ', '\\ ');
+  assert.match(r.stdout, /^CHAT: 1600000000000\.json/m, 'the same wake includes the scheduled chat after Refresh');
+  assert.ok(fs.existsSync(staleChat), 'the unanswered chat is preserved');
+  const hint = shellQuote(path.join(asks, 'bin', 'status-write.mjs'));
   assert.ok(r.stdout.includes(`node ${hint}`), `the hint names this run folder: ${r.stdout}`);
   assert.doesNotMatch(r.stdout, /_run\/bin/);
   assert.doesNotMatch(r.stdout, /modes\.mjs/);

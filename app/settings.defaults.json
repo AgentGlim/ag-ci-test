@@ -66,8 +66,8 @@
       "state": "{run}/flags/qwen-pilot-state.json"
     }
   },
-  "jev": {
-    "_doc": "Jev model and effort router (harness/bin/jev-route.mjs). routes is the rules file; keyEnv names the env var holding the API key; log is the decision log the Routing page reads.",
+  "decisions": {
+    "_doc": "Decisions routing: picks the model and effort for each subagent job (harness/bin/jev-route.mjs; router model jev, or gemini-decision once plan 89 ships). Was the \"jev\" block; a harness.json \"jev\" block is still read. routes is the rules file; keyEnv names the env var holding the router model's API key; log is the decision log the Decisions routing page reads.",
     "routes": "{agentglim}/harness/jev-routes.json",
     "keyEnv": "JEV_API_KEY",
     "log": "{data}/jev-route.ndjson"

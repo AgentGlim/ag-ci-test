@@ -3,7 +3,8 @@
 // shipped jobs-track (tools/addons/jobs-track.py) so the dashboard's Agents table shows it while it runs.
 //
 //   node worker-launch.mjs <harness> <cwd> <promptfile> <outdir> <timeoutSeconds> <effort>
-//        [--model M] [--plan NN-slug] [--label L] [--background] [--no-track] [--dry-run] [-- extra CLI args]
+//        [--model M] [--plan NN-slug] [--label L] [--role worker|orch|parallel] [--run-mode project|single]
+//        [--background] [--no-track] [--dry-run] [--now] [--phase STEP] [-- extra CLI args]
 //   bash worker-launch.sh ...   (same arguments; the wrapper only finds node)
 //
 // harness   codex | claude | pi | opencode
@@ -28,23 +29,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { cliCommand, spawnCli, killTree } from '../../app/cli-spawn.mjs';
+import { guard as runModeGuard } from '../../app/run-mode.mjs'; // F57: one builder, never parallel workers on one _build/<item>
 
 const HERE = path.dirname(fs.realpathSync(fileURLToPath(import.meta.url)));
 export const HARNESSES = ['codex', 'claude', 'pi', 'opencode'];
 const EFFORT_RE = /^[a-z]{2,10}$/;
-const USAGE = 'usage: worker-launch <codex|claude|pi|opencode> <cwd> <promptfile> <outdir> <timeoutSeconds> <effort> [--model M] [--plan NN-slug] [--label L] [--background] [--no-track] [--dry-run] [-- extra args]';
+const USAGE = 'usage: worker-launch <codex|claude|pi|opencode> <cwd> <promptfile> <outdir> <timeoutSeconds> <effort> [--model M] [--plan NN-slug] [--label L] [--role worker|orch|parallel] [--run-mode project|single] [--background] [--no-track] [--dry-run] [--now] [--phase STEP] [-- extra args]';
 
 export function parseArgs(argv) {
   const dash = argv.indexOf('--');
   const extra = dash >= 0 ? argv.slice(dash + 1) : [];
   const a = dash >= 0 ? argv.slice(0, dash) : argv.slice();
   const o = { extra, flags: new Set() }, pos = [];
-  const VAL = ['--model', '--plan', '--label', '--sandbox', '--permission-mode'];
+  const VAL = ['--model', '--plan', '--label', '--sandbox', '--permission-mode', '--phase', '--role', '--run-mode'];
   for (let i = 0; i < a.length; i++) {
     if (VAL.includes(a[i])) { if (i + 1 >= a.length) throw new Error(`${a[i]} needs a value`); o[a[i].slice(2)] = a[++i]; }
-    else if (/^--(background|no-track|dry-run|foreground)$/.test(a[i])) o.flags.add(a[i].slice(2));
+    else if (/^--(background|no-track|dry-run|foreground|now)$/.test(a[i])) o.flags.add(a[i].slice(2));
     else if (a[i].startsWith('--')) throw new Error(`unknown option ${a[i]}`);
     else pos.push(a[i]);
   }
@@ -54,6 +56,8 @@ export function parseArgs(argv) {
   if (!/^\d+$/.test(timeout) || +timeout < 1) throw new Error('timeoutSeconds must be a whole number of seconds');
   if (!EFFORT_RE.test(effort)) throw new Error('effort must be a level such as low, medium, high or xhigh');
   if (o.plan && !/^\d\d-[a-z0-9][a-z0-9-]*$/.test(o.plan)) throw new Error('--plan must look like NN-slug');
+  if (o.role && !/^(worker|orch|orchestrator|parallel)$/i.test(o.role)) throw new Error('--role must be worker, orch or parallel');
+  if (o['run-mode'] && !/^(project|single)$/i.test(o['run-mode'])) throw new Error('--run-mode must be project or single');
   return { ...o, harness, cwd: path.resolve(cwd), promptFile: path.resolve(promptFile), outdir: path.resolve(outdir), timeout: +timeout, effort };
 }
 
@@ -112,18 +116,33 @@ export async function launch(o, env = process.env) {
   const prompt = fs.readFileSync(o.promptFile, 'utf8');
   if (!prompt.trim()) throw new Error(`prompt file is empty: ${o.promptFile}`);
   if (!fs.statSync(o.cwd).isDirectory()) throw new Error(`cwd is not a folder: ${o.cwd}`);
+  // F57 run-mode rule: a _build/<item> folder gets one builder plus a review/fix pass. A parallel/orchestrator role
+  // over it is refused; a driver-managed project started one-off as a single worker gets a warning pointing at the driver.
+  const rm = runModeGuard({ harness: 'worker-launch', cwd: o.cwd, outdir: o.outdir, prompt, plan: o.plan,
+    role: o.role, mode: o['run-mode'], ppid: process.ppid });
+  if (rm.refuse) {
+    if (o.flags.has('dry-run')) return { dryRun: true, refused: true, cwd: o.cwd, outdir: o.outdir, error: rm.message };
+    fs.mkdirSync(o.outdir, { recursive: true });
+    write(path.join(o.outdir, 'rc'), '64\n');
+    write(path.join(o.outdir, 'stderr.log'), `${rm.message}\n`);
+    return { rc: 64, outdir: o.outdir, refused: true, error: rm.message };
+  }
+  if (rm.warn) process.stderr.write(`${rm.message}\n`);
   const c = buildCommand(o, prompt, env);
   if (o.flags.has('dry-run')) return { dryRun: true, cwd: o.cwd, cmd: shown(c) };
   fs.mkdirSync(o.outdir, { recursive: true });
   for (const n of ['rc', 'pid', 'last.txt']) { try { fs.renameSync(path.join(o.outdir, n), path.join(o.outdir, `${n}.prev`)); } catch {} }
   const started = Date.now();
   const meta = { harness: o.harness, model: o.model || null, effort: o.effort, cwd: o.cwd, promptFile: o.promptFile, outdir: o.outdir,
-    timeoutSeconds: o.timeout, plan: o.plan || null, label: o.label || null, started: new Date(started).toISOString(), cmd: shown(c), launcher: 'worker-launch' };
+    timeoutSeconds: o.timeout, plan: o.plan || null, label: o.label || null, role: o.role || null, runMode: rm.mode, started: new Date(started).toISOString(), cmd: shown(c), launcher: 'worker-launch' };
   write(path.join(o.outdir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n');
   const out = fs.openSync(path.join(o.outdir, 'stdout.log'), 'w'), err = fs.openSync(path.join(o.outdir, 'stderr.log'), 'w');
   let child;
   try { child = spawnCli(c.bin, c.args, { cwd: o.cwd, env, stdio: [c.stdin == null ? 'ignore' : 'pipe', out, err] }, { env }); }
   catch (e) { child = null; meta.error = String(e.message || e); }
+  const stop = () => { if (child?.pid) killTree(child, { graceMs: 1000 }); };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
   const result = await new Promise((resolve) => {
     if (!child) return resolve({ rc: 127, error: meta.error });
     let timedOut = false, done = false, killer = null;
@@ -153,6 +172,8 @@ export async function launch(o, env = process.env) {
       tracking.then(async (tracked) => { if (tracked) await track(tj, ['finish', '--id', tracked, '--rc', String(rc)], env); resolve({ rc, timedOut }); });
     });
   });
+  process.off('SIGTERM', stop);
+  process.off('SIGINT', stop);
   fs.closeSync(out); fs.closeSync(err);
   const lastF = path.join(o.outdir, 'last.txt');
   if (!c.lastFromCli || !fs.existsSync(lastF)) {
@@ -166,6 +187,60 @@ export async function launch(o, env = process.env) {
   return { rc: result.rc, outdir: o.outdir, jobId: meta.jobId || null, ...(meta.tracking ? { tracking: meta.tracking } : {}), timedOut: !!result.timedOut, error: result.error || null };
 }
 
+async function pacedLaunch(o) {
+  // F57 Run-mode rule must reject before T13 Launch pacing queues or starts an attempt.
+  const rm = runModeGuard({ harness: 'worker-launch', cwd: o.cwd, outdir: o.outdir,
+    prompt: fs.readFileSync(o.promptFile, 'utf8'), plan: o.plan,
+    role: o.role, mode: o['run-mode'], ppid: process.ppid });
+  if (rm.refuse) return launch(o);
+  const invoked = path.resolve(process.argv[1]);
+  const configured = process.env.AGENTGLIM_RUN && path.join(process.env.AGENTGLIM_RUN, 'bin', 'launch-queue.mjs');
+  const adjacent = path.join(path.dirname(invoked), 'launch-queue.mjs');
+  const queue = [adjacent, configured].find((f) => f && fs.existsSync(f));
+  if (!queue || o.flags.has('dry-run') || process.platform !== 'linux') return launch(o);
+  const P = await import(pathToFileURL(queue).href);
+  const run = path.dirname(path.dirname(queue));
+  const provider = P.providerFor(o.harness, o.model || '');
+  if (process.env.AGENT_PACE_WORKER_OUT === o.outdir && Number(process.env.AGENT_PACE_PARENT) === process.ppid) {
+    fs.mkdirSync(o.outdir, { recursive: true });
+    const rc = await P.permit({ run, provider, model: o.model || '', kind: o.harness, out: o.outdir,
+      root: process.env.AGENT_PACE_ROOT, now: o.flags.has('now'), fallback: process.env.AGENT_PACE_FALLBACK === '1' });
+    return rc ? { rc, outdir: o.outdir } : launch(o);
+  }
+  const plan = o.plan || [o.cwd, o.outdir].map((d) => d.match(/[/\\]plans[/\\](\d\d-[a-z0-9-]+)/)?.[1]).find(Boolean);
+  // Provider groups share pacing limits; the lane's kind selects the executable.
+  const harnessFor = (lane) => ({ 'codex-only': 'codex', luna: 'codex',
+    opus: 'claude', opus48: 'claude', fable: 'claude', haiku: 'claude', sonnet: 'claude' }[lane.kind] || lane.kind);
+  const result = await P.supervise({
+    type: 'worker', run, plan, phase: o.phase, kind: o.harness, cwd: o.cwd, prompt: o.promptFile, out: o.outdir,
+    lane: { kind: o.harness, provider, model: o.model || '' },
+    accepts: (candidate) => harnessFor(candidate) === o.harness || (!!plan && !o.extra.length && !o.sandbox && !o['permission-mode']),
+    start({ lane, out, prompt, fallback }) {
+      const harness = harnessFor(lane);
+      const args = [harness, o.cwd, prompt, out, String(o.timeout), o.effort, '--foreground'];
+      if (lane.model) args.push('--model', lane.model);
+      if (plan) args.push('--plan', plan);
+      if (o.label) args.push('--label', o.label);
+      if (o.role) args.push('--role', o.role);
+      if (o['run-mode']) args.push('--run-mode', o['run-mode']);
+      if (o.sandbox) args.push('--sandbox', o.sandbox);
+      if (o['permission-mode']) args.push('--permission-mode', o['permission-mode']);
+      if (o.flags.has('no-track')) args.push('--no-track');
+      if (o.flags.has('now')) args.push('--now');
+      if (o.extra.length) args.push('--', ...o.extra);
+      const env = { ...process.env, AGENTGLIM_RUN: run, AGENT_PACE_WORKER_OUT: out,
+        AGENT_PACE_PARENT: String(process.pid), AGENT_PACE_ROOT: o.outdir, AGENT_PACE_FALLBACK: fallback ? '1' : '0' };
+      return P.childResult(spawn(process.execPath, [invoked, ...args], { env, detached: true, stdio: ['ignore', 'ignore', 'inherit'] }));
+    },
+  });
+  if (!result.lastAttempt) return result;
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(result.lastAttempt, 'meta.json'), 'utf8'));
+    return { ...result, jobId: meta.jobId || null, ...(meta.tracking ? { tracking: meta.tracking } : {}),
+      timedOut: !!meta.timedOut, error: meta.error || null };
+  } catch { return result; }
+}
+
 const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
 if (isMain) {
   let o;
@@ -176,14 +251,14 @@ if (isMain) {
     const argv = process.argv.slice(2).filter((x) => x !== '--background');
     const dash = argv.indexOf('--'); argv.splice(dash >= 0 ? dash : argv.length, 0, '--foreground');
     const log = fs.openSync(path.join(o.outdir, 'launcher.log'), 'a');
-    const c = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv], { detached: true, stdio: ['ignore', log, log], windowsHide: true });
+    const c = spawn(process.execPath, [path.resolve(process.argv[1]), ...argv], { detached: true, stdio: ['ignore', log, log], windowsHide: true });
     c.unref();
     console.log(JSON.stringify({ background: true, launcherPid: c.pid, outdir: o.outdir }));
     process.exit(0);
   }
   try {
-    const r = await launch(o);
+    const r = await pacedLaunch(o);
     console.log(JSON.stringify(r));
-    process.exitCode = r.dryRun ? 0 : r.rc;
+    process.exitCode = r.refused ? 64 : r.dryRun ? 0 : r.rc;
   } catch (e) { console.error(`worker-launch: ${e.message}`); process.exitCode = 2; }
 }

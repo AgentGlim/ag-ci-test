@@ -49,7 +49,7 @@ test('duration floor, failures always, stopped on purpose skipped, stopped after
   const d = store(t), od = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-od-')); fs.writeFileSync(path.join(od, 'noretry'), '');
   t.after(() => fs.rmSync(od, { recursive: true, force: true }));
   const short = job({ started: T0 - 90e3, ended: T0 - 30e3 });
-  const shortFail = job({ status: 'failed', rc: 75, started: T0 - 40e3, ended: T0 - 30e3, label: 'x one' });
+  const shortFail = job({ status: 'failed', rc: 1, started: T0 - 40e3, ended: T0 - 30e3, label: 'x one' });
   const stopNo = job({ status: 'stopped', outdir: od, label: 'x two' });
   const stopRep = job({ status: 'stopped', summary: 'Done: it works\nmore', label: 'x three' });
   const r = DA.sweep(d, [short, shortFail, stopNo, stopRep], { now: T0, minMinutes: 2 });
@@ -57,6 +57,9 @@ test('duration floor, failures always, stopped on purpose skipped, stopped after
   assert.equal(DA.readNotice(d, stopRep.id).outcome, 'done');
   assert.equal(DA.readNotice(d, stopRep.id).result, 'Done: it works');
   assert.equal(DA.readNotice(d, shortFail.id).outcome, 'failed');
+  const busy = job({ status: 'failed', rc: 75, label: 'busy retry' });
+  assert.deepEqual(DA.sweep(d, [busy], { now: T0 }).created, []);
+  assert.equal(fs.existsSync(DA.noticePath(d, busy.id)), false);
 });
 
 test('wrapper + take: one notice keyed by the take, wrapper id is an alias; wait while the wrapper runs; failed wrapper wins', (t) => {

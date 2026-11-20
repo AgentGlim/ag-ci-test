@@ -22,6 +22,8 @@ for (const eol of ['\n', '\r\n']) test(`digest (${JSON.stringify(eol)}): done pl
   const projects = {}, log = [];
   for (const [dir, [stage, hAgo]] of Object.entries(plans)) {
     write(`plans/${dir}/PLAN.md`, `# ${dir}\n`);
+    // Completed plans include the final acceptance evidence required by plan-status.
+    if (stage === 'done') write(`plans/${dir}/_build/VERIFY.md`, 'Verdict: PASS\nRequirements: 100 pass / 100 total\n');
     projects[dir] = { stage, stages: [] };
     log.push([now - hAgo * H, stage === 'done' ? `advance ${dir} v1-verify -> done (ok)` : `launch ${dir} v1-r1 worker`]);
   }

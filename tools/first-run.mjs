@@ -9,8 +9,9 @@
 //   node tools/first-run.mjs doctor [--json]   checks data-folder and run-folder writes, a localhost call to the
 //                                                 dashboard, the tool links and listener/heartbeat freshness, and
 //                                                 prints the exact fix for each failure (exit 1 if any check fails)
-// answers.json: { "harnesses": ["codex"], "subs": { "codex": { "tier": "plus" } }, "jev": false, "apiDailyUsd": 5,
+// answers.json: { "harnesses": ["codex"], "subs": { "codex": { "tier": "plus" } }, "decisions": false, "apiDailyUsd": 5,
 //   "goals": [ { "title": "Ship the app", "outcome": "...", "next_action": "...", "allocation": 60 } ] }
+// "decisions" turns Decisions routing on or off (was "jev"; an answers file with "jev" still works).
 // Everything is written under $AGENTGLIM_DATA (default ~/.agentglim). No credentials are read into the output.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -58,7 +59,7 @@ export function status() {
     run: RUN,
     dataDir: DATA, setupFile: SETUP_FILE, goalsDir: GOALS,
     harnesses: d.harnesses.map((h) => ({ id: h.id, name: h.name, binary: !!h.bin, loggedIn: !!h.auth })),
-    questions: [!setupDone && 'harnesses', !setupDone && 'jev', !setupDone && 'budget', !goalsDone && 'goals'].filter(Boolean),
+    questions: [!setupDone && 'harnesses', !setupDone && 'decisions', !setupDone && 'budget', !goalsDone && 'goals'].filter(Boolean),
   };
 }
 
@@ -92,10 +93,11 @@ export async function apply(a, { scaffold = true } = {}) {
     const on = new Set(Array.isArray(a.harnesses) ? a.harnesses : HARNESSES.filter((h) => cfg.harnesses[h.id]).map((h) => h.id));
     for (const h of HARNESSES) cfg.harnesses[h.id] = on.has(h.id);
     for (const [id, v] of Object.entries(a.subs || {})) if (cfg.subs[id]) { cfg.subs[id].on = v !== false; if (v && v.tier && cfg.subs[id].entries?.[0]) cfg.subs[id].entries[0].tier = String(v.tier); }
-    if (a.jev !== undefined) cfg.jev = { on: !!a.jev };
+    const dr = a.decisions !== undefined ? a.decisions : a.jev; // "jev" = old answer key
+    if (dr !== undefined) cfg.decisions = cfg.jev = { on: !!dr };
     cfg.budget = { apiDailyUsd: Number.isFinite(+a.apiDailyUsd) ? +a.apiDailyUsd : 5 };
     const saved = saveSetup(cfg, { complete: false }); // marked complete below, once the tools are linked
-    out.setup = { file: SETUP_FILE, harnesses: Object.keys(saved.harnesses).filter((k) => saved.harnesses[k]), jev: saved.jev.on, apiDailyUsd: saved.budget.apiDailyUsd };
+    out.setup = { file: SETUP_FILE, harnesses: Object.keys(saved.harnesses).filter((k) => saved.harnesses[k]), decisions: saved.decisions.on, jev: saved.decisions.on, apiDailyUsd: saved.budget.apiDailyUsd };
   }
   if (a.goals !== undefined) {
     const { goals, map } = buildGoals(a.goals);
@@ -187,6 +189,12 @@ export async function doctor({ env = process.env, fetchImpl = globalThis.fetch }
   }
   const missing = DOCTOR_TOOLS.filter((n) => { const f = path.join(RUN, 'bin', n); try { fs.statSync(f); return false; } catch { return true; } }); // statSync follows links: a dangling link counts as missing
   add('tool-links', !missing.length, missing.length ? `missing or broken in ${path.join(RUN, 'bin')}: ${missing.join(', ')}` : `${DOCTOR_TOOLS.length} tools linked`, `npm run scaffold-harness   (from ${path.resolve(HERE, '..')})`);
+  const pacer = path.join(RUN, 'bin', 'launch-queue.mjs');
+  if (fs.existsSync(pacer)) {
+    const { watcherCheck } = await import(pathToFileURL(pacer).href);
+    const watcher = watcherCheck(RUN);
+    add('claude-queue-watcher', watcher.ok, 'Claude queue watcher running', watcher.fix, true);
+  }
   const sa = ageMin(info.heartbeat), lw = ageMin(path.join(RUN, 'heartbeats', 'auditq-wait'));
   const { turnArmed, readSession } = await appMod('turn-delivery.mjs');
   const turn = turnArmed(DATA), reg = readSession(DATA);

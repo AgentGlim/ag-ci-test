@@ -1,10 +1,13 @@
-// Jev routing dashboard data: reads the decision log written by plans/_run/bin/jev-route.mjs,
+// Decisions routing dashboard data (was "Jev routing", owner 2026-11-19): reads the decision log written by
+// plans/_run/bin/jev-route.mjs (router model jev; gemini-decision rows once plan 89 logs here),
 // stores owner feedback beside it, and sums the feedback into a plain-words "what you prefer" view.
 // Read-only toward jev-route.mjs: this module never edits the router, it only suggests tweaks as text.
 // The option list (strongest first), tie margin and ping picks come from the router's rules file, harness/jev-routes.json
 // (path from app/settings.mjs), read on every call; the constants below are only the fallback when it can't be read.
 import fs from 'node:fs';
 import { DATA } from './paths.mjs';
+import { routerModel, ROUTER_MODELS } from './decisions-routing.mjs';
+import { decisionsLog } from './routing-log.mjs'; // plan 89: four-source decisions log (D06, D07, D10)
 let hcfg = null; import('./settings.mjs').then((m) => { hcfg = m; }).catch(() => {}); // the fallback constants below cover a missing rules file
 
 export const ROUTE_FILE = `${DATA}/jev-route.ndjson`;
@@ -19,9 +22,9 @@ export const TIER_COST = { top: 10, mid: 4, cheap: 1, free: 0 }; // rough relati
 const HEAVY = ['claude-fable', 'codex-astra']; // fallback for notify.picks
 const CLOSE = 0.05; // fallback for close
 // { models, efforts, close, heavy, file }: live rules when readable, else the constants above
-export function jevRules() {
+export function decisionsRules() {
   try {
-    const file = hcfg.harnessConfig().jev.routes, r = JSON.parse(fs.readFileSync(file, 'utf8')), ids = Object.keys(r.options || {});
+    const cfg = hcfg.harnessConfig(), file = (cfg.decisions || cfg.jev).routes, r = JSON.parse(fs.readFileSync(file, 'utf8')), ids = Object.keys(r.options || {});
     if (!ids.length) throw new Error('no options');
     const models = [...(r.strength || []).filter((m) => ids.includes(m)), ...ids.filter((m) => !(r.strength || []).includes(m))];
     const used = new Set(ids.flatMap((m) => r.options[m].efforts || []));
@@ -47,7 +50,7 @@ export function saveFeedback(b) {
   if (!d) return { status: 422, error: 'unknown decision' };
   if (!VERDICTS.includes(b.verdict)) return { status: 422, error: 'verdict must be right, stronger or cheaper' };
   const better = b.better == null || b.better === '' ? null : b.better;
-  if (better !== null && !jevRules().models.includes(better)) return { status: 422, error: 'unknown model' };
+  if (better !== null && !decisionsRules().models.includes(better)) return { status: 422, error: 'unknown model' };
   const note = typeof b.note === 'string' ? b.note.replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, 500) : '';
   const rec = { t: new Date().toISOString(), id: d.t, verdict: b.verdict, better, note, pick: d.pick, effort: d.effort };
   fs.appendFileSync(FEEDBACK_FILE, JSON.stringify(rec) + '\n');
@@ -92,18 +95,22 @@ export function routingView() {
   const decisions = rows.map((r) => {
     const rk = Object.entries(r.ranked || {}).sort((a, b) => b[1] - a[1]);
     const ru = rk.find(([m]) => m !== r.pick);
-    return { id: r.t, t: r.t, task: shortTask(r.task), taskFull: String(r.task || '').slice(0, 600), pick: r.pick, pPick: r.pPick, effort: r.effort, pEffort: r.pEffort,
+    return { id: r.t, t: r.t, router: routerModel(r), task: shortTask(r.task), taskFull: String(r.task || '').slice(0, 600), pick: r.pick, pPick: r.pPick, effort: r.effort, pEffort: r.pEffort,
       runnerUp: ru ? { model: ru[0], p: ru[1] } : null, ranked: r.ranked || {}, efforts: r.efforts || {}, feedback: fb[r.t] || null,
       design: r.design === true, pDesign: typeof r.pDesign === 'number' ? r.pDesign : null, designSource: r.designSource || null };
   }).sort((a, b) => (a.t < b.t ? 1 : -1));
   const count = (key) => decisions.reduce((o, d) => { o[d[key]] = (o[d[key]] || 0) + 1; return o; }, {});
   const picks = count('pick'), efforts = count('effort');
-  const R = jevRules(), heavy = new Set(R.heavy);
+  const R = decisionsRules(), heavy = new Set(R.heavy);
   const tiers = { top: 0, mid: 0, cheap: 0, free: 0 };
   for (const [m, n] of Object.entries(picks)) tiers[R.tiers[m] || TIER[m] || 'mid'] += n;
   const models = [...R.models, ...Object.keys(picks).filter((m) => !R.models.includes(m))]; // old decisions for a removed option still show
   const tierOf = Object.fromEntries(models.map((m) => [m, R.tiers[m] || TIER[m] || 'mid']));
   return { at: new Date().toISOString(), total: decisions.length, models, efforts: R.efforts, tiers: tierOf, tierCost: TIER_COST,
-    picks, effortCounts: efforts, tierCounts: tiers, heavy: decisions.filter((d) => heavy.has(d.pick)).length, heavyPicks: [...heavy], close: R.close, rulesFile: R.file, design: R.design, designCount: decisions.filter((d) => d.design).length,
-    decisions: decisions.slice(0, 500), prefs: prefs(rows, fb, R.close) };
+    routers: count('router'), routerModels: ROUTER_MODELS, picks, effortCounts: efforts, tierCounts: tiers, heavy: decisions.filter((d) => heavy.has(d.pick)).length, heavyPicks: [...heavy], close: R.close, rulesFile: R.file, design: R.design, designCount: decisions.filter((d) => d.design).length,
+    decisions: decisions.slice(0, 500), prefs: prefs(rows, fb, R.close), log: safeLog() };
 }
+
+export const jevRules = decisionsRules; // old name
+
+function safeLog() { try { return decisionsLog(); } catch (e) { return { error: String(e?.message || e).slice(0, 200), sources: [], counts: {}, total: 0, rows: [], summary: null }; } }

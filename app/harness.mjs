@@ -1,6 +1,6 @@
 // harness.mjs: data for the Harness page (/harness, GET /api/harness). Read-only: it never writes a harness file.
 // Shows every harness piece from harness/manifest.json with a live check of its path, plus the settings
-// that matter day to day: worker lanes, Jev routing rules, the disk guard, the local model supervisor,
+// that matter day to day: worker lanes, Decisions routing rules, the disk guard, the local model supervisor,
 // the watcher queues and the harness skills. Paths and defaults come from app/settings.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import { harnessConfig, AGENTGLIM_ROOT } from './settings.mjs';
 import { superagentView } from './heartbeats.mjs'; // the private data heartbeat a fresh SuperAgent touches (AGENTS.md)
 import { keySource } from './env.mjs';
 import { readProcText } from './proc.mjs';
+import { EDIT_KEYS, wireKey, editKey, routerModel } from './decisions-routing.mjs';
 
 const MANIFEST = harnessConfig().harness?.manifest || path.join(AGENTGLIM_ROOT, 'harness', 'manifest.json');
 const readJson = (f, d = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
@@ -75,29 +76,30 @@ function lanes(cfg, held) {
   return { error, pauseS, lanes: rows, order: b.order || null, routerMode: b.mode || null, budgetAgeS: ageS(b.at), source: fromCfg ? 'harness config lanes.free' : cfg.files.workerSh, configPatched: patched };
 }
 
-// Jev settings the page can change: requests waiting in the run-modes queue (the watcher applies them) and recent changes
-export const EDIT_KEYS = ['jev.close', 'jev.notifyPicks'];
-function jevEdits(cfg) {
+// Decisions routing settings the page can change: requests waiting in the run-modes queue (the watcher applies them)
+// and recent changes. Shown as decisions.*; the queue and harness-set.mjs still carry the jev.* wire key.
+export { EDIT_KEYS };
+function decisionsEdits(cfg) {
   const q = cfg.files.modeQueue, pending = [];
-  try { for (const f of fs.readdirSync(q).filter((x) => /\.json$/.test(x)).sort()) { const r = readJson(`${q}/${f}`, {}); if (EDIT_KEYS.includes(r.key)) pending.push({ key: r.key, value: r.value, at: r.at, by: r.by }); } } catch {}
+  try { for (const f of fs.readdirSync(q).filter((x) => /\.json$/.test(x)).sort()) { const r = readJson(`${q}/${f}`, {}); if (wireKey(r.key)) pending.push({ key: editKey(r.key), value: r.value, at: r.at, by: r.by }); } } catch {}
   const recent = readText(path.join(cfg.roots.data, 'harness-settings.ndjson')).trim().split('\n').filter(Boolean).slice(-5).reverse()
-    .map((l) => { try { const r = JSON.parse(l); return { at: r.at, key: r.key, old: r.old, value: r.value, by: r.by }; } catch { return null; } }).filter(Boolean);
+    .map((l) => { try { const r = JSON.parse(l); return { at: r.at, key: editKey(r.key), old: r.old, value: r.value, by: r.by }; } catch { return null; } }).filter(Boolean);
   return { keys: EDIT_KEYS, pending, recent };
 }
-function jev(cfg, pieces) {
-  const rules = readJson(cfg.jev.routes);
-  const rows = readText(cfg.jev.log).trim().split('\n').filter(Boolean);
+function decisionsRouting(cfg, pieces) {
+  const rules = readJson(cfg.decisions.routes);
+  const rows = readText(cfg.decisions.log).trim().split('\n').filter(Boolean);
   let last = null; try { last = rows.length ? JSON.parse(rows[rows.length - 1]) : null; } catch {}
   const live = pieces.find((p) => p.id === 'jev-router');
   return {
-    file: cfg.jev.routes, found: !!rules, keyEnv: cfg.jev.keyEnv, keySource: keySource(cfg.jev.keyEnv || 'JEV_API_KEY'),
+    file: cfg.decisions.routes, found: !!rules, keyEnv: cfg.decisions.keyEnv, keySource: keySource(cfg.decisions.keyEnv || 'JEV_API_KEY'),
     close: rules?.close ?? null, strength: rules?.strength || [], effortOrder: rules?.effortOrder || [], fallback: rules?.fallback || null,
     notifyPicks: rules?.notify?.picks || [],
     design: rules?.design ? { allowed: rules.design.allowed || [], threshold: rules.design.threshold ?? 0.5, keywords: rules.design.keywords || [], question: rules.design.question || '' } : null,
     options: Object.entries(rules?.options || {}).map(([id, o]) => ({ id, group: o.group || '', efforts: o.efforts || [], desc: o.desc || '' })),
-    decisions: rows.length, last: last ? { t: last.t, pick: last.pick, effort: last.effort, p: last.pPick, design: last.design === true, pDesign: last.pDesign ?? null } : null,
+    decisions: rows.length, last: last ? { t: last.t, router: routerModel(last), pick: last.pick, effort: last.effort, p: last.pPick, design: last.design === true, pDesign: last.pDesign ?? null } : null,
     harnessPathIsLink: !!live?.linked,
-    edits: jevEdits(cfg),
+    edits: decisionsEdits(cfg),
   };
 }
 
@@ -191,7 +193,7 @@ export function harnessView() {
     roots: cfg.roots, config: { defaults: cfg.source.defaults, user: cfg.source.user, userFound: cfg.source.userFound },
     harness: { run: cfg.roots.run, found: fs.existsSync(cfg.roots.run), scaffold: 'npm run scaffold-harness',
       packaged: pieces.filter((p) => p.packagedFound).length, missing: pieces.filter((p) => p.live && !p.live.exists).length },
-    pieces, lanes: lanes(cfg, held), jev: jev(cfg, pieces), disk: disk(cfg), local: local(cfg, held), watcher: watcher(cfg), modes: modes(cfg),
+    pieces, lanes: lanes(cfg, held), ...((d) => ({ decisionsRouting: d, jev: d }))(decisionsRouting(cfg, pieces)), disk: disk(cfg), local: local(cfg, held), watcher: watcher(cfg), modes: modes(cfg),
     skills: skills(cfg, man.skills, home),
   });
 }

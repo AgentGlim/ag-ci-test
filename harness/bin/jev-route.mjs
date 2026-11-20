@@ -20,7 +20,7 @@
 // and simple, pSimple and simpleSource (plus " | simple <p>%" on the plain line when the local option was allowed),
 // and usage (per provider: pct, window, tier, step), usageExcluded, usageDemoted, usageOver (plus " | usage: ..." on the line).
 // Rules (options, strength order, close margin, efforts, notify picks) live in a JSON file: harness/jev-routes.json
-// by default, or jev.routes in your harness.json, or AGENTGLIM_JEV_ROUTES. Each pick is appended to jev.log
+// by default, or decisions.routes (old: jev.routes) in your harness.json, or AGENTGLIM_DECISIONS_ROUTES (old: AGENTGLIM_JEV_ROUTES). Each pick is appended to jev.log
 // (default <data>/jev-route.ndjson, the file the Routing page reads: {t, task, pick, pPick, effort, pEffort, ranked, efforts}).
 // The API key comes from the env var named by jev.keyEnv (default JEV_API_KEY); see app/classify.mjs jevAsk.
 import fs from 'node:fs';
@@ -32,6 +32,8 @@ import { harnessConfig } from '../config.mjs';
 import { loadSetup } from '../../app/setup.mjs';
 import { nonFreeOptions, poolFor } from './free-models.mjs';
 import { skippedModels, cooldownTag } from './model-cooldown.mjs';
+
+import { classify as classifyRunMode } from '../../app/run-mode.mjs'; // F57: print project|single next to the pick
 
 const fill = (t, v) => String(t).replace(/\{(\w+)\}/g, (m, k) => (Object.hasOwn(v, k) ? String(v[k]) : m));
 
@@ -70,6 +72,32 @@ export function stronger(list, order, close, demoted = []) {
   const top = list[0][1], at = (k) => { const i = order.indexOf(k); return i < 0 ? Infinity : i; }, dm = new Set(demoted);
   return list.filter(([, v]) => top - v <= close).sort((x, y) => (dm.has(x[0]) - dm.has(y[0])) || at(x[0]) - at(y[0]))[0];
 }
+
+// Close-call policy (owner 2026-11-19). All inputs have already passed eligibility and cooldown filters.
+export function closeCallProtected(task = '', context = {}) {
+  return !!(context.pinned || context.ownerAsked)
+    || /\bfinal[\s-]+reviews?\b|\bverif(?:y|ies|ied|ying|ication)\b|\b(?:install|rollback)\.sh\b|\b(?:plan-pinned|owner-asked)\b/i.test(task);
+}
+export function selectModel(rules, ranked, demoted = [], context = {}) {
+  const top = stronger(ranked, rules.strength || [], rules.close ?? 0.05, demoted);
+  if (!top || closeCallProtected(context.task, context)) return { top };
+  const config = rules.router || {}, threshold = config.closeCallP ?? 0.45, gap = config.closeCallGap ?? 0.08;
+  const runner = ranked.find(([id]) => id !== top[0]);
+  if (!runner || !(top[1] < threshold) || Math.abs(top[1] - runner[1]) > gap + Number.EPSILON) return { top };
+  const order = (config.costOrder || []).find((ids) => ids.includes(top[0]) && ids.includes(runner[0]));
+  // Missing cost evidence, or a runner at a worse usage tier, keeps the original pick.
+  if (!order || order.indexOf(runner[0]) >= order.indexOf(top[0]) || (demoted.includes(runner[0]) && !demoted.includes(top[0]))) return { top };
+  return { top: runner, closeCall: { from: top[0], to: runner[0], pTop: top[1], pRunnerUp: runner[1], threshold, gap,
+    reason: 'low-confidence close call; runner-up is cheaper in the configured cost order' } };
+}
+export function auditCloseCall(cfg, closeCall) {
+  if (!closeCall) return;
+  const file = process.env.DECISIONS_OVERRIDE_LOG || process.env.JEV_OVERRIDE_LOG || path.join(cfg.run, 'jev-override.ndjson');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, JSON.stringify({ t: new Date().toISOString(), router: 'jev', category: 'cheaper-runner-up',
+    decision: 'downgrade', ...closeCall }) + '\n');
+}
+export const closeCallTag = (c) => c ? ` | close call: ${c.from} p=${c.pTop} -> ${c.to} p=${c.pRunnerUp}; ${c.reason}` : '';
 
 export function stateOf(rules, task) { return fill(rules.stateTemplate, { task: task.slice(0, rules.taskMaxChars || 6000) }); }
 
@@ -212,27 +240,28 @@ export function effortQuestions(rules, pick) {
 }
 
 // answers1/answers2: Jev answers objects; answers2 null when the effort call failed
-export function choose(rules, answers1, answers2, ids = nonFreeOptions(rules), demoted = [], worker = false) {
+export function choose(rules, answers1, answers2, ids = nonFreeOptions(rules), demoted = [], worker = false, context = {}) {
   const cooling = new Set(skippedModels(rules, ids).map((row) => row.model));
   const available = poolFor(rules, ids, worker).filter((id) => !cooling.has(id));
   const ranked = rank(answers1, 'm_').filter(([k]) => available.includes(k));
-  const top = stronger(ranked, rules.strength || [], rules.close ?? 0.05, demoted);
+  const { top, closeCall } = selectModel(rules, ranked, demoted, context);
   if (!top) return { error: 'Jev returned no usable model scores' };
   const [pick, p] = top;
   const allowed = new Set(rules.options[pick].efforts);
   const efforts = answers2 ? rank(answers2, 'e_').filter(([e]) => allowed.has(e)) : [];
   const best = stronger(efforts, rules.effortOrder || [], rules.close ?? 0.05);
   const [effort, pEffort] = best || [rules.fallback?.effort || 'medium', NaN];
-  return { pick, p, ranked, effort, pEffort, efforts: efforts.length ? efforts : [[effort, NaN]] };
+  return { pick, p, ranked, ...(closeCall ? { closeCall } : {}), effort, pEffort, efforts: efforts.length ? efforts : [[effort, NaN]] };
 }
 
 export function output(rules, c) {
   return { pick: c.pick, effort: c.effort, launch: launchOf(rules, c.pick, c.effort), p: +c.p.toFixed(3), pEffort: +(c.pEffort || 0).toFixed(3),
-    ranked: c.ranked.map(([k, v]) => `${k}=${v.toFixed(2)}`), efforts: c.efforts.map(([k, v]) => `${k}=${(v || 0).toFixed(2)}`) };
+    ...(c.closeCall ? { closeCall: c.closeCall } : {}), ranked: c.ranked.map(([k, v]) => `${k}=${v.toFixed(2)}`), efforts: c.efforts.map(([k, v]) => `${k}=${(v || 0).toFixed(2)}`) };
 }
 
 function logPick(cfg, rec) {
-  try { fs.mkdirSync(path.dirname(cfg.jev.log), { recursive: true }); fs.appendFileSync(cfg.jev.log, JSON.stringify(rec) + '\n'); } catch {} // read-only sandboxes: skip the log
+  // router: the model that decided (Decisions routing page "Router" column; owner 2026-11-19)
+  try { fs.mkdirSync(path.dirname(cfg.jev.log), { recursive: true }); fs.appendFileSync(cfg.jev.log, JSON.stringify({ router: 'jev', ...rec }) + '\n'); } catch {} // read-only sandboxes: skip the log
 }
 
 // --local-ok: the stage-0 gate only, for plans/_run/bin/worker.sh before a local Qwen lane.
@@ -255,19 +284,34 @@ async function localOkMain(cfg, rules, a) {
   return ok ? 0 : 1;
 }
 
+function reviewLoopPool(ids) {
+  const allowed = process.env.AGENTGLIM_LOOP_PICKS;
+  return allowed ? ids.filter((id) => allowed.split(' ').includes(id)) : ids;
+}
+
+function preferReviewFamily(ids) {
+  const avoid = process.env.AGENTGLIM_REVIEW_AVOID_FAMILY;
+  if (!['claude', 'codex', 'deepseek-flash'].includes(avoid)) return ids;
+  const different = ids.filter((id) => id !== avoid && !id.startsWith(`${avoid}-`));
+  return different.length ? different : ids;
+}
+
 async function main() {
   const a = process.argv.slice(2);
   // --plan-worker: only an orchestrator spawning a worker inside an autonomous plan run loop passes it; without it
   // the pick is from the non-worker allowlist (Claude, Codex, deepseek-flash). Owner 2026-11-13.
   const worker = a[0] === '--plan-worker'; if (worker) a.shift();
-  const pool = (ids) => poolFor(rules, ids, worker);
+  const pool = (ids) => reviewLoopPool(poolFor(rules, ids, worker));
   const cfg = harnessConfig();
-  if (a[0] !== '--rules' && loadSetup().jev?.on === false) {
+  // Decisions routing on/off: "decisions" in setup.json (was "jev"; loadSetup migrates it)
+  if (a[0] !== '--rules' && ((st) => (st.decisions || st.jev)?.on === false)(loadSetup())) {
     if (a[0] === '--local-ok') { console.log(JSON.stringify({ localOk: false, disabled: true })); return 1; }
     let rules; // no usable rules file (fresh install): keep the plain Sonnet answer, which is never free
     try { rules = loadRules(cfg); } catch { console.log(JSON.stringify({ pick: 'claude-sonnet', p: 1, effort: 'medium', launch: 'Agent tool, model "sonnet", effort "medium"', disabled: true })); return 0; }
-    const ids = nonFreeOptions(rules), skipped = skippedModels(rules, ids);
-    const keep = ids.filter((id) => !skipped.some((row) => row.model === id));
+    const off = process.env.AGENTGLIM_LOOP_PICKS ? ownerOff(rules, loadBudget(rules, cfg)) : new Set();
+    const ids = reviewLoopPool(nonFreeOptions(rules)).filter((id) => !off.has(id));
+    const skipped = skippedModels(rules, ids);
+    const keep = preferReviewFamily(ids.filter((id) => !skipped.some((row) => row.model === id)));
     const pick = keep.includes('claude-sonnet') ? 'claude-sonnet' : (rules.strength || []).find((id) => keep.includes(id)) || keep[0];
     if (!pick) { console.error(`jev-route: no available non-free model${cooldownTag(skipped)}`); return 1; }
     const effort = rules.options[pick].efforts.includes('medium') ? 'medium' : rules.options[pick].efforts[0];
@@ -278,8 +322,18 @@ async function main() {
   const rules = loadRules(cfg);
   if (a[0] === '--rules') { console.log(JSON.stringify({ file: cfg.jev.routes, ...rules }, null, 2)); return 0; }
   if (a[0] === '--local-ok') return localOkMain(cfg, rules, a.slice(1));
+  // F57: --target PATH / --outdir PATH tell the run-mode classifier what this job will touch (a plan folder, a
+  // _build/<item> folder, a T#/F# build); without them the prompt text decides.
+  const rmOpt = { target: '', outdir: '', plans: '' };
+  for (let i = 0; i < a.length; i++) {
+    if (['--target', '--outdir', '--plans'].includes(a[i])) { rmOpt[a[i].slice(2)] = a[i + 1] || ''; a.splice(i, 2); i--; }
+  }
   const task = a[0] === '-f' ? fs.readFileSync(a[1], 'utf8') : a.join(' ');
-  if (!task.trim()) { console.error('usage: jev-route.mjs "<task>" | -f file | --rules'); return 2; }
+  if (!task.trim()) { console.error('usage: jev-route.mjs [--target PATH] [--outdir PATH] "<task>" | -f file | --rules'); return 2; }
+  let runMode = null;
+  try { runMode = classifyRunMode({ target: rmOpt.target, outdir: rmOpt.outdir, prompt: task, plansRoot: rmOpt.plans }); } catch { runMode = null; }
+  const runTag = runMode ? ` | run: ${runMode.mode} (${runMode.reason})` : '';
+  const runFields = runMode ? { runMode: runMode.mode, runModeReason: runMode.reason } : {};
   if (cfg.jev.keyEnv && cfg.jev.keyEnv !== 'JEV_API_KEY' && process.env[cfg.jev.keyEnv] && !process.env.JEV_API_KEY) process.env.JEV_API_KEY = process.env[cfg.jev.keyEnv];
   let design = null, ids = pool(Object.keys(rules.options)), cooldownSkipped = [];
   const filterCooldown = () => {
@@ -293,8 +347,8 @@ async function main() {
     let fb = rules.fallback;
     if (!ids.includes(fb.pick)) fb = { pick: (rules.strength || []).find((k) => ids.includes(k)) || ids[0], effort: fb.effort };
     if (!rules.options[fb.pick].efforts.includes(fb.effort)) fb = { ...fb, effort: rules.options[fb.pick].efforts[0] };
-    if (cooldownSkipped.length) console.log(`model: ${fb.pick} | reasoning: ${fb.effort}${cooldownTag(cooldownSkipped)}`);
-    console.log(JSON.stringify({ error: e, pick: fb.pick, effort: fb.effort, launch: launchOf(rules, fb.pick, fb.effort), ...(cooldownSkipped.length ? { cooldownSkipped } : {}), ...(design?.design ? { design: true, pDesign: design.p } : {}) }));
+    if (cooldownSkipped.length) console.log(`model: ${fb.pick} | reasoning: ${fb.effort}${cooldownTag(cooldownSkipped)}${runTag}`);
+    console.log(JSON.stringify({ error: e, pick: fb.pick, effort: fb.effort, launch: launchOf(rules, fb.pick, fb.effort), ...(cooldownSkipped.length ? { cooldownSkipped } : {}), ...(design?.design ? { design: true, pDesign: design.p } : {}), ...runFields }));
     return 1;
   };
   let state = stateOf(rules, task);
@@ -309,29 +363,36 @@ async function main() {
     let keep = ids.filter((k) => !offSubs.has(k));
     if (!keep.length) keep = candidates(rules, null, simple, worker).filter((k) => !offSubs.has(k));
     if (!keep.length) keep = pool(Object.keys(rules.options)).filter((k) => !offSubs.has(k));
-    if (keep.length) { ids = keep; if (design?.design) state += '\nThe Claude subscription is paused by the owner, so this design job goes to the best non-Claude option.'; }
+    if (keep.length || process.env.AGENTGLIM_LOOP_PICKS) { ids = keep; if (design?.design) state += '\nThe Claude subscription is paused by the owner, so this design job goes to the best non-Claude option.'; }
   }
   const pz = rules.paused; // paused options leave the menu until the date
-  if (pz && (!pz.until || Date.now() < Date.parse(pz.until))) { const keep = ids.filter((k) => !(pz.ids || []).includes(k)); if (keep.length) ids = keep; }
+  if (pz && (!pz.until || Date.now() < Date.parse(pz.until))) { const keep = ids.filter((k) => !(pz.ids || []).includes(k)); if (keep.length || process.env.AGENTGLIM_LOOP_PICKS) ids = keep; }
   const plan = planningOf(rules, task);
   if (plan) { const keep = ids.filter((k) => rules.planning.allowed.includes(k)); const alt = pool(rules.planning.allowed.filter((k) => rules.options[k])).filter((k) => rules.options[k] && !offSubs.has(k)); ids = keep.length ? keep : alt.length ? alt : ids; }
+  if (process.env.AGENTGLIM_LOOP_PICKS && !pool(ids).length) {
+    // Task heuristics can offer models outside this role. Keep the owner-filtered lane.
+    ids = pool(Object.keys(rules.options)).filter((id) => !offSubs.has(id)
+      && !(pz && (!pz.until || Date.now() < Date.parse(pz.until)) && (pz.ids || []).includes(id)));
+  }
   ids = pool(ids); // owner 2026-11-13: non-workers get the allowlist only; free models are plan-loop-worker-only
   filterCooldown(); // Never reintroduce unavailable models through policy or usage fallbacks.
   if (!ids.length) return fail('No available non-free model');
   const usage = usageOf(rules, budget), ua = applyUsage(ids, usage); // usage tiers
-  ids = ua.ids; state += usageNote(usage, ids);
+  ids = preferReviewFamily(ua.ids); state += usageNote(usage, ids);
   const r1 = await jevAsk(state, modelQuestions(rules, ids), 'route-model');
   if (r1.error) return fail(r1.error);
   filterCooldown(); // A concurrent run may have failed while Jev was scoring models.
   const first = rank(r1.answers, 'm_').filter(([k]) => ids.includes(k));
-  const pre = stronger(first, rules.strength || [], rules.close ?? 0.05, ua.demoted);
+  const { top: pre } = selectModel(rules, first, ua.demoted, { task });
   if (!pre) return fail('Jev returned no usable model scores');
   const r2 = await jevAsk(state, effortQuestions(rules, pre[0]), 'route-effort');
   filterCooldown();
-  const c = choose(rules, r1.answers, r2.error ? null : r2.answers, ids, ua.demoted, worker);
+  const c = choose(rules, r1.answers, r2.error ? null : r2.answers, ids, ua.demoted, worker, { task });
   if (c.error) return fail(c.error);
   if (plan && !c.error) { const ord = rules.effortOrder || [], min = ord.indexOf(rules.planning.minEffort || 'high');
     if (ord.indexOf(c.effort) > min) { const up = ord.slice(0, min + 1).reverse().find((e) => rules.options[c.pick].efforts.includes(e)); if (up) c.effort = up; } }
+  // A downgrade without its required audit receipt must not produce a launchable pick.
+  try { auditCloseCall(cfg, c.closeCall); } catch (e) { console.error(`jev-route: close-call audit unavailable: ${e.message}`); return 1; }
   const out = output(rules, c);
   if (cooldownSkipped.length) out.cooldownSkipped = cooldownSkipped;
   if (plan) Object.assign(out, { planning: true });
@@ -344,15 +405,15 @@ async function main() {
     spawnSync(cfg.notify.command, ['--event', 'info', '--title', fill(rules.notify.title, v), fill(rules.notify.body, v)], { stdio: 'ignore', timeout: 15000 });
   }
   logPick(cfg, { t: new Date().toISOString(), task: task.slice(0, 500), pick: c.pick, pPick: +c.p.toFixed(3), effort: c.effort, pEffort: +(c.pEffort || 0).toFixed(3),
-    ranked: Object.fromEntries(c.ranked.map(([k, v]) => [k, +v.toFixed(3)])), efforts: Object.fromEntries(c.efforts.map(([k, v]) => [k, +(v || 0).toFixed(3)])),
+    ...(c.closeCall ? { closeCall: c.closeCall } : {}), ranked: Object.fromEntries(c.ranked.map(([k, v]) => [k, +v.toFixed(3)])), efforts: Object.fromEntries(c.efforts.map(([k, v]) => [k, +(v || 0).toFixed(3)])),
     ...(design ? { design: design.design, pDesign: design.p == null ? null : +design.p.toFixed(3), designSource: design.source, ...(design.hits.length ? { designHits: design.hits } : {}) } : {}),
     ...(simple ? { simple: simple.simple, pSimple: simple.p == null ? null : +simple.p.toFixed(3), simpleSource: simple.source, ...(simple.hits.length ? { simpleHits: simple.hits } : {}) } : {}),
-    ...usageLog(usage, ua), ...(cooldownSkipped.length ? { cooldownSkipped } : {}), ...(budget?.error ? { usageError: budget.error } : {}) });
+    ...usageLog(usage, ua), ...(cooldownSkipped.length ? { cooldownSkipped } : {}), ...(budget?.error ? { usageError: budget.error } : {}), ...runFields });
   const pct = (v) => `${Math.round((v || 0) * 100)}%`;
   const dTag = design?.design ? ` | design ${design.p == null ? `(keywords: ${design.hits.join(', ')})` : pct(design.p)}` : '';
   const sTag = simple?.simple ? ` | simple ${simple.p == null ? '(keywords)' : pct(simple.p)}` : '';
-  console.log(`model: ${c.pick} ${pct(c.p)} | reasoning: ${c.effort} ${pct(c.pEffort)}${dTag}${sTag}${usageTag(usage, ua, c.pick, design?.design, budget)}${cooldownTag(cooldownSkipped)}`);
-  console.log(JSON.stringify(out));
+  console.log(`model: ${c.pick} ${pct(c.p)} | reasoning: ${c.effort} ${pct(c.pEffort)}${dTag}${sTag}${usageTag(usage, ua, c.pick, design?.design, budget)}${cooldownTag(cooldownSkipped)}${closeCallTag(c.closeCall)}${runTag}`);
+  console.log(JSON.stringify({ ...out, ...runFields }));
   return 0;
 }
 

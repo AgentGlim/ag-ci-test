@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.23
+
+- "Jev routing" is now "Decisions routing". The page lives at `/decisions-routing` (`/routing` and `/jev-routing` redirect there; `/api/routing`, `/api/routing-feedback` and `/api/setup/jev` still answer). Its table has a Router column: the model that made each decision, `jev` or `gemini-decision`. Only the router model keeps a model name.
+- Settings: the `decisions` block replaces `jev` in harness.json and setup.json. Old files are read as before and Setup writes both keys; `AGENTGLIM_DECISIONS_ROUTES` joins `AGENTGLIM_JEV_ROUTES`. Harness page edits send `decisions.close` / `decisions.notifyPicks` (`jev.*` still accepted). First-run asks `decisions` (answers with `jev` still work).
+- The `jev-gate` add-on is now `decisions-gate`, with `jev-gate` kept as a thin wrapper. It accepts `[decisions: ...]` / `[decisions-override: ...]` tags as well as the old `[jev...]` tags, logs `router` on every record and has `decisions-gate config-path` (`~/.config/decisions-gate`, old `~/.config/jev-gate` as a fallback).
+
 ## 0.2.22
 
 - F23 Development cycle: opt-in coding loops with protected evidence, independent validation, budgets and recovery.

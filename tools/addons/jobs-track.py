@@ -16,7 +16,7 @@ which passes the wrapped command's exit code through).
   jobs-track heartbeat --id ID
   jobs-track run    --harness H [--plan NN-slug] [--model M] [--label L] [--outdir O] -- CMD ...
                     registers CMD as a job, waits, finishes it with CMD's rc
-  jobs-track claude-hook          Claude Code hook (PreToolUse via jev-gate, PostToolUse, SubagentStop); JSON on stdin
+  jobs-track claude-hook          Claude Code hook (PreToolUse via decisions-gate, old name jev-gate, PostToolUse, SubagentStop); JSON on stdin
   jobs-track reap [--backfill H]  liveness: finish jobs whose pid is gone or whose rc file appeared;
                     register running agent.sh / headless-take.sh processes not yet known;
                     --backfill H also imports plan outdirs that finished in the last H hours
@@ -664,7 +664,7 @@ def nice_label(slug, parent=None):
 # ---------- commands ----------
 TASK_RE = re.compile(r"\[task:\s*([^\]]+)\]", re.I)
 QUIET_RE = re.compile(r"\[quiet\]", re.I)
-STRIP_TAGS = re.compile(r"\[(?:jev|plan|task|quiet)[^\]]*\]\s*", re.I)
+STRIP_TAGS = re.compile(r"\[(?:jev|decisions|plan|task|quiet)[^\]]*\]\s*", re.I)
 
 
 def one_sentence(t, cap=140):

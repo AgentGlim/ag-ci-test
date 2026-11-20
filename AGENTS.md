@@ -28,7 +28,7 @@ From another folder, the global note that setup installs (`~/.codex/AGENTS.md`, 
 
 When `node tools/first-run.mjs status` says `needsSetup` (no `setup.json` / `setup-complete`, or goals still the bundled
 examples), run the setup as a plan-mode-style interview in the chat, **one question at a time**, never a batch:
-harnesses, Jev routing, daily API budget, then the user's goals (and one follow-up per goal), then whether to install the
+harnesses, Decisions routing, daily API budget, then the user's goals (and one follow-up per goal), then whether to install the
 global note. Give a recommended answer with each question. Confirm a short summary, then write everything with
 `node tools/first-run.mjs apply answers.json`: it saves `setup.json`, `setup-complete`, `budget.json`, the goals and
 goal map under `$AGENTGLIM_DATA`, links the SuperAgent tools (scaffold) and can install the global note. The first

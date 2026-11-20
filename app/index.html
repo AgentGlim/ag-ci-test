@@ -362,6 +362,7 @@ tr:hover td{background:var(--panel2)}
 .pipe .cpt{display:inline-block;margin-left:6px;padding:1px 6px;font-size:10px;vertical-align:1px;white-space:nowrap}
 @media(max-width:600px){.pipe .name.cph{white-space:normal}.pipe .name.cph a.pl{white-space:nowrap}.pipe .name.cph .cpt{margin-left:0}}
 .rev{font:600 10px/1.4 var(--mono);padding:0 4px;border-radius:5px;border:1px solid currentColor;margin-right:5px}
+.rm{font:600 9.5px/1.6 var(--mono);padding:0 4px;border-radius:5px;border:1px solid var(--line);color:var(--ink3);margin-right:5px;white-space:nowrap}.rm.single{color:var(--local);border-color:var(--local)}
 .pipe .who{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 /* done-ack (2026-11-14): finished-job icons that stay until seen. Ring + badge (variant 1A), detail-card tip (2C),
    row Clear (3C), side panel (4B), all-seen next to the chip (5B) and in the panel footer (5C) */
@@ -669,6 +670,10 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
 .theme-toggle .theme-moon{display:none}
 [data-theme="light"] .theme-toggle .theme-sun{display:none}
 [data-theme="light"] .theme-toggle .theme-moon{display:block}
+
+/* T15 install queue: keep item, status and action readable on narrow screens. */
+.install-queue .dt{table-layout:fixed;font-size:14px}.install-queue .dt th{color:var(--ink2);white-space:normal}.install-queue .dt th:nth-child(1){width:32%}.install-queue .dt th:nth-child(2){width:18%}.install-queue .dt td{overflow-wrap:anywhere;white-space:normal}.install-queue .btn{min-height:36px;white-space:normal;max-width:100%}
+@media(max-width:600px){.install-queue .btn{min-height:44px}}
 </style>
 <link rel="stylesheet" href="/walkthrough.css">
 <link rel="stylesheet" href="/update-notice.css">
@@ -689,11 +694,11 @@ h2.stg{cursor:pointer;user-select:none}h2.stg .cv{display:inline-block;transitio
       <nav class="pgm-list" role="menu">
         <a class="pgm-i" role="menuitem" href="/goals" target="_blank" rel="noopener" data-tip="Open the Goals app: alignment, asks by goal, the weekly review, rules and print to PDF">Goals</a>
         <a class="pgm-i" role="menuitem" href="/roles" data-tip="Who can do what: allowed models for each job role and effective choices for every plan">Roles</a>
-        <a class="pgm-i" role="menuitem" href="/routing" data-tip="Jev routing: which model and reasoning level each subagent got, cost view and your feedback">Routing</a>
+        <a class="pgm-i" role="menuitem" href="/decisions-routing" data-tip="Decisions routing: which model and reasoning level each subagent got (router model: jev or gemini-decision), cost view and your feedback">Decisions routing</a>
         <a class="pgm-i" role="menuitem" href="/process-guard" data-tip="Process guard: AI agent activity, and long-running AI-started processes to stop or allow">Process guard</a>
         <a class="pgm-i" role="menuitem" href="/alerts" target="_blank" rel="noopener" data-tip="Alerts: every harness alert grouped by failure cause, with counts, first and last seen, and one reply per digest">Alerts</a>
         <details class="pgm-arch dev-only"><!-- dev-only: stripped by server.mjs in production --><summary class="pgm-i" style="opacity:.6;cursor:pointer">Archived</summary>
-        <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/harness" data-tip="Harness: where each harness piece lives, worker lanes, Jev rules, disk guard, local model, SuperAgent queues and skills">Harness</a>
+        <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/harness" data-tip="Harness: where each harness piece lives, worker lanes, Decisions routing rules, disk guard, local model, SuperAgent queues and skills">Harness</a>
         <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/control" data-tip="Live sessions: chat, terminal, controls and the SuperAgent thread (plan 55 control)">Control</a>
         <a class="pgm-i" style="opacity:.6;padding-left:22px" role="menuitem" href="/reaper" target="_blank" rel="noopener" data-tip="Hung reader reaper: AI verdicts on stuck processes">Reaper</a>
         </details>
@@ -1347,20 +1352,22 @@ function providers(s) {
 }
 
 function agents(s) {
-  $('agentsTitle').textContent = `Agents, ${rangeLabel()}: running first${s.agents.length >= 300 ? ' (latest 300)' : ''}`;
+  const items = [...(s.sessionWork || []), ...s.agents].slice(0, 300);
+  $('agentsTitle').textContent = `Agents, ${rangeLabel()}: running first${items.length >= 300 ? ' (up to 300)' : ''}`;
   const status = (a) => a.skip ? `<span class="st ${a.skip.kind === 'limit' ? 'retry' : 'queued'}" data-tip="${esc(a.skip.why)}">${a.skip.kind === 'limit' ? 'limit hit' : 'skipped'}</span>`
+    : a.diesOnQuit ? '<span class="st retry" data-tip="Closing the parent agent session will stop this work">dies on quit</span>'
     : a.active ? '<span class="st running">running</span>' : a.rc === '0' ? '<span class="st done">ok</span>'
     : a.rc ? `<span class="st retry">rc ${esc(a.rc)}</span>` : '<span class="st queued">ended</span>';
-  const rows = s.agents.map((a) => `<tr><td>${status(a)}</td>
+  const rows = items.map((a) => `<tr><td>${status(a)}</td>
     <td>${esc(a.project)}</td><td class="role">${esc(a.role)}</td><td>${esc(a.task)}</td>
     <td>${ico(pk(a.provider, a.model))} ${esc(a.model || a.kind || '')}${a.slot ? ` <span class="meta">(${esc(a.slot)})</span>` : ''}${a.skip?.kind === 'skipped' ? ' <span class="meta">· not started</span>' : ''}</td>
     <td>${a.skip?.kind === 'skipped' && !a.calls ? '<span class="meta">-</span>' : `<span class="cls"><i class="sw" style="background:${colorOf(a.class)}"></i>${esc(a.class || '-')}</span>`}</td>
     <td class="num" title="${a.started ? new Date(a.started).toLocaleString() : ''}">${a.active ? ago(a.started) : a.started && a.ended ? ago(Date.now() - (a.ended - a.started)) : '-'}${a.queueWaitMin || a.provWaitMin ? `<div class="meta" data-tip="waiting, included in the duration: SuperAgent queue (queued to taken) and Opus/Codex unavailable retries">${a.queueWaitMin ? `queue ${a.queueWaitMin}m` : ''}${a.queueWaitMin && a.provWaitMin ? ' · ' : ''}${a.provWaitMin ? `wait ${a.provWaitMin}m` : ''}</div>` : ''}</td><td class="num">${fmt(a.tokens.input)}</td><td class="num">${fmt(a.tokens.output)}</td>
-    <td class="num">${fmt(a.tokens.cacheRead)}</td><td class="num">${fmt(a.tokens.cacheWrite || 0)}</td><td class="num">${a.calls ? pctTxt(hitRate(a.tokens)) : '-'}</td><td class="num">${a.calls}</td><td class="num">${a.costState === 'not captured' ? '<span class="meta" data-tip="finished paid job with no usage record (rule 2026-11-03: never shown as $0)">not captured</span>' : '$' + a.cost.toFixed(3)}</td><td class="num">${ago(a.lastMsg)}</td></tr>`).join('');
+    <td class="num">${fmt(a.tokens.cacheRead)}</td><td class="num">${fmt(a.tokens.cacheWrite || 0)}</td><td class="num">${a.calls ? pctTxt(hitRate(a.tokens)) : '-'}</td><td class="num">${a.calls}</td><td class="num">${a.costState === 'not captured' ? `<span class="meta" data-tip="${a.diesOnQuit ? 'Session work has no separate usage record' : 'finished paid job with no usage record (rule 2026-11-03: never shown as $0)'}">not captured</span>` : '$' + a.cost.toFixed(3)}</td><td class="num">${ago(a.lastMsg)}</td></tr>`).join('');
   $('agents').innerHTML = `<thead><tr><th>Status</th><th>Project</th><th>Role</th><th>Task</th><th>Model</th><th>Class</th><th class="num">Duration</th>
     <th class="num">In</th><th class="num">Out</th><th class="num">Cache R</th><th class="num">Cache W</th><th class="num">Hit %</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Last msg</th></tr></thead><tbody>${rows || '<tr><td colspan="15" class="meta">No agents in this range</td></tr>'}</tbody>`;
   bindTips($('agents'));
-  foldMini('agents', `<b>${s.agents.filter((a) => a.active).length}</b> running · ${s.agents.length} listed`);
+  foldMini('agents', `<b>${items.filter((a) => a.active).length}</b> running · ${items.length} listed`);
 }
 
 // leads campaign: chunk -> batch -> controller step (stage2.* / stage3.* / stage4.*), from server leadsStatus()
@@ -1909,10 +1916,10 @@ function tjRows(p, nCols) {
   const live = list.filter((j) => j.status === 'running'), done = list.filter((j) => j.status === 'done'), bad = list.filter((j) => j.status !== 'running' && j.status !== 'done');
   const seen = new Set(list.map((j) => j.id).filter(Boolean));
   for (const f of (p.features || []).map(present).filter(Boolean)) { if (f.id && seen.has(f.id)) continue; if (f.id) seen.add(f.id); (f.status === 'running' ? live : f.status && f.status !== 'done' ? bad : done).push({ ...f, status: f.status || 'done' }); }
-  const history = board?.clearedJobs || [];
+  const history = [...(board?.clearedJobs || []), ...(p.attemptHistory || []), ...(p.subHistory || []).map(j => ({ ...j, label: j.title || j.id }))];
   const n = live.length + bad.length + done.length;
   if (!n && !history.length) return '';
-  const SC = { running: 'var(--free)', done: 'var(--status-done)', failed: 'var(--bad)', stopped: 'var(--local)', idle: 'var(--info)' };
+  const SC = { running: 'var(--free)', done: 'var(--status-done)', failed: 'var(--bad)', stopped: 'var(--local)', idle: 'var(--info)', busy: 'var(--warn)', blocked: 'var(--bad)' };
   const pico = (j) => { const d = j.viaPlan || (j.isPlan && /^\d\d-/.test(j.project || '') ? j.project : null) || (/^\d\d-/.test(j.plan || '') ? j.plan : null) || (/^\d\d-/.test(p.dir || '') ? p.dir : null); const g = d ? planPath(d) : p.dir === 'Unassigned' ? UNASSIGNED_G : FOLDER_G;
     const c = PIC[(s0 => s0 && s0.cat)((lastState?.projects || []).find((x) => x.dir === d))] || 'var(--ink3)';
     return `<span class="tpi" style="display:inline-flex;width:14px;height:14px;flex:none" data-tip="${esc(d || p.dir)}"><svg viewBox="0 0 24 24" width="14" height="14"><path d="${g || FOLDER_G}" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`; };
@@ -1921,7 +1928,7 @@ function tjRows(p, nCols) {
     const when = st === 'running' ? `running ${tjDur(j)}` : j.ended ? `${st}${j.endReason ? ` (${j.endReason})` : ''} · ${tjDur(j)} · ${ago(j.ended)} ago` : `${st} ${esc(j.finished || '')}`;
     const tip = `<b>${esc(j.label)}</b>${j.slug && j.slug !== j.label ? ` <span class="meta">${esc(j.slug)}</span>` : ''}<br>${TJ_KIND[j.kind] || 'Sub-task'} on ${esc(j.viaPlan ? `${j.viaPlan} (folded into ${p.dir})` : p.dir)}<br>${esc(TJ_HARNESS[j.harness] || j.harness || '')}${j.model ? ` · ${esc(j.model)}` : ''}${j.presentationEffort ? ` · ${esc(j.presentationEffort)}` : ''}<br>${esc(when)}${j.activityHint || j.statusHint ? `<br>${esc(j.activityHint || j.statusHint)}` : ''}${j.projectFrom ? `<br><span class="meta">plan from: ${esc(j.projectFrom)}</span>` : ''}${j.launcher ? `<br><span class="meta">via ${esc(j.launcher)}</span>` : ''}`;
     return `<div class="name sub tsk" style="padding-left:22px;opacity:.9;display:flex;align-items:center;gap:6px;min-width:0" data-tip="${esc(tip)}">${pico(j)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.label)}</span>${j.kind && j.kind !== 'subagent' ? ` <span class="meta">${esc(TJ_KIND[j.kind] || j.kind)}</span>` : ''}</div>`
-      + `<div style="grid-column:span ${nCols};font-size:11px" data-tip="${esc(tip)}"><span class="st ${st === 'in progress' ? 'in-progress' : ''}" style="background:${c};color:var(--on-solid);padding:1px 6px;border-radius:8px">${esc(st)}</span> <span class="meta">${esc(j.statusHint || (st === 'running' ? `${tjDur(j)}${j.activityHint ? ` · ${j.activityHint}` : ''}` : when))}</span>${j.id && (j.outdir || j.hasReport) ? ` <a class="meta" href="/api/job-report?id=${encodeURIComponent(j.id)}" target="_blank" rel="noopener">report</a>` : ''}</div>`
+      + `<div style="grid-column:span ${nCols};font-size:11px" data-tip="${esc(tip)}"><span class="st ${st === 'in progress' ? 'in-progress' : ''}" style="background:${c};color:var(--on-solid);padding:1px 6px;border-radius:8px">${esc(st)}</span> ${j.retryCount ? `<details class="plan-retries" style="display:inline-block;vertical-align:middle;white-space:nowrap;margin-right:6px"><summary>retried ${j.retryCount}×</summary>${(j.retryHistory || []).map(h => `<div>${esc(h.label || h.id)} · ${String(h.rc) === '75' ? 'busy, retried' : esc(h.status)}${h.id ? ` · <a href="/api/job-report?id=${encodeURIComponent(h.id)}" target="_blank" rel="noopener">report</a>` : ''}</div>`).join('')}</details>` : ''}<span class="meta">${esc(j.statusHint || (st === 'running' ? `${tjDur(j)}${j.activityHint ? ` · ${j.activityHint}` : ''}` : when))}</span>${j.id && (j.outdir || j.hasReport) ? ` <a class="meta" href="/api/job-report?id=${encodeURIComponent(j.id)}" target="_blank" rel="noopener">report</a>` : ''}</div>`
       + `<div class="xc pg" data-tip="${esc(tip)}"><div class="bar tk"><i style="width:${pct}%;background:${c}${st === 'running' ? ';opacity:.8' : ''}"></i></div><span class="pl2">${st === 'running' ? tjDur(j) : st}</span></div>`
       + `<div></div><div class="who xc"></div>`; // 2026-11-14 one-icon: sub-task rows wear no icon; the project row's Working column shows one per running process
   };
@@ -1933,7 +1940,7 @@ function tjRows(p, nCols) {
   if (!open) return head;
   const tog = done.length ? `<div class="subdn" data-p="${esc(key)}" style="grid-column:1/-1;padding:2px 0 2px 36px;font-size:11px;cursor:pointer;color:var(--ink3);user-select:none" title="Click to ${showDone ? 'hide' : 'show'} the finished sub-tasks">${done.length} done, ${showDone ? 'shown' : 'hidden'} (<u>${showDone ? 'hide' : 'show'}</u>)</div>` : '';
   const historyKey = 'cleared:' + p.dir, historyOpen = subDone.has(historyKey);
-  const cleared = history.length ? `<div style="grid-column:1/-1;padding-left:36px"><button type="button" class="subdn" data-p="${esc(historyKey)}" aria-expanded="${historyOpen}">${history.length} cleared failed/stopped tasks (${historyOpen ? 'hide' : 'show'} history)</button></div>`
+  const cleared = history.length ? `<div style="grid-column:1/-1;padding-left:36px"><button type="button" class="subdn" data-p="${esc(historyKey)}" aria-expanded="${historyOpen}">${history.length} earlier failed/blocked/stopped tasks (${historyOpen ? 'hide' : 'show'} history)</button></div>`
     + (historyOpen ? history.map(one).join('') : '') : '';
   return head + live.map(one).join('') + bad.map(one).join('') + tog + (showDone ? done.map(one).join('') : '') + cleared;
 }
@@ -2145,7 +2152,7 @@ function pipe(s) {
     const verOf = (n) => `v0.${n - 1}`;
     const rev = p.rev ? `<span class="rev" data-tip="${esc(`<b>${verOf(p.rev.n)}</b> (prototype; v1 needs your final approval): ${esc(p.rev.label)}<br>reopened ${p.rev.at}${p.rev.prevDone ? `<br>previous run finished ${p.rev.prevDone}` : ''}<br><span class="meta">columns 1.r1-1.r3 show the earlier run (v0.${p.rev.n - 2})</span>`)}">${verOf(p.rev.n)}</span>` : '';
     const byCat = catHeldBy(p);
-    out += `<div class="name${p.stage === 'done' ? ' done' : ''}${p.held && !p.active ? ' held' : ''}${byCat ? ' cph' : ''}"${col ? ` style="--cat:${col}"` : ''} title="${esc(p.dir)}${p.cat ? ` · ${p.cat}` : ''}${p.selfInfo ? ` · live, pid ${p.selfInfo.pid}, up ${ago(p.selfInfo.started)}${p.selfInfo.last ? `, last change ${p.selfInfo.last.file} ${ago(p.selfInfo.last.at)} ago` : ''}` : ''}">${(cpyRows[`p:${p.dir}`] = p, `<span class="stpg cpy" data-k="${esc(`p:${p.dir}`)}" data-tip="${esc(`${p.dir}<br><b>click to copy its status for a chat</b>`)}">${stPI(p)}</span>`)}${/^\d\d-/.test(p.dir) ? `<button class="hbt${p.held ? ' on' : ''}" data-hold="${esc(p.dir)}" data-held="${p.held ? 1 : 0}" data-tip="${esc(p.held ? `<b>On hold</b>: ${p.held}<br>click to resume (nothing starts until then)` : 'click to hold: nothing new starts; a running step finishes first')}">${p.held ? '&#9654;' : '&#10073;&#10073;'}</button>` : ''}${tierBadge(p.dir)}${rev}${(() => { const c = (s.approvalCounts || []).find((x) => x.project === p.dir); return c && c.openOwner ? `<span class="apb" data-p="${esc(p.dir)}" title="${c.openOwner} open item${c.openOwner > 1 ? 's' : ''} for you: show them">${c.openOwner}</span>` : ''; })()}${p.noLink ? `<span class="pl" title="${esc(p.noLink)}">${esc(p.label || p.dir)}</span>` : `<a class="pl" href="${esc(p.page || pageUrl(`${p.dir}/index.html`))}" target="_blank" rel="noopener" title="Open ${esc(p.dir)}'s review page">${esc(p.label || p.dir)}</a>`}${(() => { const c = (s.approvalCounts || []).find((x) => x.project === p.dir); return c && c.apPage ? ` <a class="pl apl" href="${esc(pageUrl(c.apPage))}" target="_blank" rel="noopener" title="Approvals &amp; next steps for ${esc(p.dir)}">approvals</a>` : ''; })()}${byCat ? ` <span class="cpt" data-tip="${esc(`<b>Paused with the ${byCat} category</b><br>${p.held}<br>Resume it from Pause categories at the right end of the key above.`)}">paused: ${esc(byCat)}</span>` : ''}${p.active ? ` <span class="meta">(${p.active})</span><span class="st ${rowPaused ? 'queued' : 'running'}">${rowPaused ? 'paused' : 'running'}</span>` : ''}</div>`;
+    out += `<div class="name${p.stage === 'done' ? ' done' : ''}${p.held && !p.active ? ' held' : ''}${byCat ? ' cph' : ''}"${col ? ` style="--cat:${col}"` : ''} title="${esc(p.dir)}${p.cat ? ` · ${p.cat}` : ''}${p.selfInfo ? ` · live, pid ${p.selfInfo.pid}, up ${ago(p.selfInfo.started)}${p.selfInfo.last ? `, last change ${p.selfInfo.last.file} ${ago(p.selfInfo.last.at)} ago` : ''}` : ''}">${(cpyRows[`p:${p.dir}`] = p, `<span class="stpg cpy" data-k="${esc(`p:${p.dir}`)}" data-tip="${esc(`${p.dir}<br><b>click to copy its status for a chat</b>`)}">${stPI(p)}</span>`)}${/^\d\d-/.test(p.dir) ? `<button class="hbt${p.held ? ' on' : ''}" data-hold="${esc(p.dir)}" data-held="${p.held ? 1 : 0}" data-tip="${esc(p.held ? `<b>On hold</b>: ${p.held}<br>click to resume (nothing starts until then)` : 'click to hold: nothing new starts; a running step finishes first')}">${p.held ? '&#9654;' : '&#10073;&#10073;'}</button>` : ''}${tierBadge(p.dir)}${p.planStatus?.mismatch ? `<span class="st plan-mismatch" style="background:var(--bad);color:var(--on-solid)" title="${esc(p.planStatus.reason)}">mismatch</span>` : ''}${rev}${p.runMode ? `<span class="rm ${esc(p.runMode.mode)}" data-tip="${esc(`<b>Run mode: ${esc(p.runMode.label)}</b><br>${esc(p.runMode.reason)}<br><span class="meta">F57 rule: ${p.runMode.mode === 'project' ? 'planner splits 1-4 tasks with disjoint files, workers run in parallel, an auditor checks' : 'one builder, then a review/fix loop; never parallel workers on the same files'}</span>`)}">${esc(p.runMode.label)}</span>` : ''}${(() => { const c = (s.approvalCounts || []).find((x) => x.project === p.dir); return c && c.openOwner ? `<span class="apb" data-p="${esc(p.dir)}" title="${c.openOwner} open item${c.openOwner > 1 ? 's' : ''} for you: show them">${c.openOwner}</span>` : ''; })()}${p.noLink ? `<span class="pl" title="${esc(p.noLink)}">${esc(p.label || p.dir)}</span>` : `<a class="pl" href="${esc(p.page || pageUrl(`${p.dir}/index.html`))}" target="_blank" rel="noopener" title="Open ${esc(p.dir)}'s review page">${esc(p.label || p.dir)}</a>`}${(() => { const c = (s.approvalCounts || []).find((x) => x.project === p.dir); return c && c.apPage ? ` <a class="pl apl" href="${esc(pageUrl(c.apPage))}" target="_blank" rel="noopener" title="Approvals &amp; next steps for ${esc(p.dir)}">approvals</a>` : ''; })()}${byCat ? ` <span class="cpt" data-tip="${esc(`<b>Paused with the ${byCat} category</b><br>${p.held}<br>Resume it from Pause categories at the right end of the key above.`)}">paused: ${esc(byCat)}</span>` : ''}${p.active ? ` <span class="meta">(${p.active})</span><span class="st ${rowPaused ? 'queued' : 'running'}">${rowPaused ? 'paused' : 'running'}</span>` : ''}</div>`;
     const gateWait = p.activeBuild?.gateAt ? `waiting for your audit ${ago(p.activeBuild.gateAt)}` : '';
     if (p.stateText && names.every((x) => !x)) out += `<div class="meta rowstate" style="grid-column:span ${names.length};align-self:center;font-size:11.5px;padding-left:4px" data-tip="${esc(`${p.dir}<br>${p.stateText}`)}">${esc(p.stateText)}</div>`;
     else out += names.map((st, i) => {
@@ -2161,9 +2168,9 @@ function pipe(s) {
         : gateWait && /-gate$/.test(st) ? ` (${gateWait})` : ' (waiting)';
       return `<div class="dot ${cls}${cur && (allPaused || idleHeld) ? ' pz' : ''}" ${cur ? `style="${delay};${p.active ? runStyle(p.working) : ''}"` : ''} data-tip="${esc(`${p.dir}<br>${st}${cur ? why : ''}`)}"></div>`;
     }).join('');
-    const pr = p.activeBuild ? actProgress(p, s) : p.progress;
-    const prTip = !pr ? 'No audit estimate yet' : pr.tip || `<b>${pr.pct}%</b> of the spec, estimated in the ${pr.round} audit<br><span class="meta">${esc(pr.text)}</span>`;
-    out += `<div class="xc${pr?.label ? ' pg' : ''}" data-tip="${esc(prTip)}"><div class="bar tk"><i style="width:${pr?.pct || 0}%${col ? `;background:${col}` : ''}"></i></div>${pr?.label ? `<span class="pl2">${pr.label}</span>` : ''}</div><div class="num xc" data-tip="${esc(`${fmt(p.tokens)} tokens, ${(p.cost || 0).toFixed(2)} at API rates, all rounds${p.tokNote ? `<br><span class="meta">${p.tokNote}</span>` : ''}${p.liveBuild && !p.activeBuild && !(p.working || []).length ? `<br><span class="meta">driver stage <b>${esc(p.liveBuild.stage || '?')}</b>: nothing running yet, waiting for a free slot or the budget router</span>` : ''}`)}">${fmt(p.tokens)}${p.cost ? `<span style="font-size:11px;color:var(--local);margin-left:6px">$${Math.round(p.cost)}</span>` : ''}</div>`;
+    const pr = p.planStatus ? p.progress : p.activeBuild ? actProgress(p, s) : p.progress;
+    const prTip = p.planStatus?.mismatch ? p.planStatus.reason : !pr ? 'No current verification estimate yet' : pr.tip || `<b>${pr.pct}%</b> of the spec, estimated in the ${pr.round} audit<br><span class="meta">${esc(pr.text)}</span>`;
+    out += `<div class="xc${pr?.label ? ' pg' : ''}" data-tip="${esc(prTip)}"><div class="bar tk"><i style="width:${pr?.pct || 0}%${col ? `;background:${col}` : ''}"></i></div>${pr?.label ? `<span class="pl2">${pr.label}</span>` : p.planStatus ? `<span class="pl2">${pr?.pct == null ? 'unknown' : `${pr.pct}%`} · ${esc(p.planStatus.verdict)}</span>` : ''}</div><div class="num xc" data-tip="${esc(`${fmt(p.tokens)} tokens, ${(p.cost || 0).toFixed(2)} at API rates, all rounds${p.tokNote ? `<br><span class="meta">${p.tokNote}</span>` : ''}${p.liveBuild && !p.activeBuild && !(p.working || []).length ? `<br><span class="meta">driver stage <b>${esc(p.liveBuild.stage || '?')}</b>: nothing running yet, waiting for a free slot or the budget router</span>` : ''}`)}">${fmt(p.tokens)}${p.cost ? `<span style="font-size:11px;color:var(--local);margin-left:6px">$${Math.round(p.cost)}</span>` : ''}</div>`;
     const lbM = p.liveBuild && !p.activeBuild ? (p.liveBuild.models || []).map((m) => String(m).replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2')).join(', ') : '';
     // Driver stage + models used to sit in a text chip here; the provider icons show them now, so the detail rides in their tooltips.
     const lbTip = p.liveBuild && !p.activeBuild ? `<br><span class="meta">driver stage <b>${esc(p.liveBuild.stage || '?')}</b>: ${lbM ? `running ${esc(lbM)}` : 'nothing running yet, waiting for a free slot or the budget router'}</span>` : '';
@@ -2744,11 +2751,11 @@ try { const v = parseInt(localStorage.getItem('obsFinishedDays'), 10); if (v >= 
 const stFinLabel = (n) => (n === 1 ? 'finished in the last 24 h' : `finished in the last ${n} days`);
 // the plan table follows the same window (finished.mjs plansInWindow/doneLabel): d.olderDone = done plans that last moved 1-7 days ago
 const stDoneL = (n) => (n === 1 ? 'done today' : `done in ${n} days`);
-const stWinOrd = { running: 0, gate: 1, cooldown: 2, waiting: 3, done: 4, held: 5 };
+const stWinOrd = { mismatch: -1, running: 0, gate: 1, cooldown: 2, waiting: 3, done: 4, held: 5 };
 const stWin = (d) => { const cut = Date.now() - stFinDays * 86400e3; return [...d.plans, ...(d.olderDone || []).filter((p) => p.state === 'done' && p.last?.t >= cut)].sort((a, b) => (stWinOrd[a.state] ?? 9) - (stWinOrd[b.state] ?? 9) || a.dir.localeCompare(b.dir)); };
 try { stPick = localStorage.getItem('obsStatusPick') || 'all'; } catch {}
-const ST_C = { agents: 'var(--success-text)', running: 'var(--free)', gate: 'var(--info)', cooldown: 'var(--local)', waiting: 'var(--ink3)', done: 'var(--free)', held: 'var(--other)' };
-const ST_L = { agents: 'subagents running', running: 'plans building', gate: 'your audit', cooldown: 'retry wait', waiting: 'waiting for a slot', done: 'done today', held: 'held' };
+const ST_C = { mismatch: 'var(--bad)', agents: 'var(--success-text)', running: 'var(--free)', gate: 'var(--info)', cooldown: 'var(--local)', waiting: 'var(--ink3)', done: 'var(--free)', held: 'var(--other)' };
+const ST_L = { mismatch: 'mismatch', agents: 'subagents running', running: 'plans building', gate: 'your audit', cooldown: 'retry wait', waiting: 'waiting for a slot', done: 'done today', held: 'held' };
 const stHm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const stChip = (st, p) => `<span class="stc" style="--c:${ST_C[st]}">${st === 'done' && p && !p.doneAt ? 'done' : ST_L[st]}</span>`; // a kept done plan (03) is not "done today"
 const stShort = (x) => x.replace(/^v(\d+)-(r\d)$/, '$1.$2').replace(/^v\d+-/, '');
@@ -3215,6 +3222,18 @@ function statusPanel(s) {
     // stacked: watch out, the SuperAgent said, for you; short here, in depth on the Warnings and flags view
     h += `<div class="stcols stack"><div class="stcol${stHc('o-health')}"><span>watch out ${stTg('o-health')}<button class="btn" data-go-flags="health">in depth</button></span>${stHealth(d)}</div><div class="stcol${stHc('o-reap')}"><span>hang reaper, AI verdicts ${stTg('o-reap')}<a class="btn" href="/reaper" target="_blank" rel="noopener">in depth</a></span><div id="stReap">${stReap()}</div></div><div class="stcol${stHc('o-said')}"><span>the SuperAgent said ${stTg('o-said')}<button class="btn" data-go-flags="said">in depth</button></span><div id="stAsk"></div>${said}</div><div class="stcol${stHc('o-you')}"><span>for you, ranked by what clearing it unblocks ${stTg('o-you')}</span>${d.blockers ? stBlockers(d) : you}</div></div>`;
     h += `<div class="stcol" style="margin-top:12px"><span>trials</span><div id="stTrials">${stTrials()}</div></div>`;
+    if (d.reviewLoops?.length) {
+      h += `<div class="stcol"><span>Build reviews</span>${dTab(['plan', 'build', 'round', 'status'], d.reviewLoops.map((r) => [
+        esc(r.plan), esc(r.item), esc(r.round), `<span title="${esc(r.reason)}">${esc(r.icon)} ${esc(r.label)}</span>`,
+      ]))}</div>`;
+    }
+    // T15 install queue: commands remain owner-run; copying never executes them.
+    if (d.installQueue?.length) {
+      h += `<div class="stcol install-queue"><span>Install queue</span>${dTab(['item', 'status', 'next step'], d.installQueue.map((r) => [
+        esc(`${r.id} ${r.name}`), esc(r.status === 'owner' ? 'You:' : r.status),
+        `${esc(r.reason)}${r.command ? ` <button type="button" class="btn" data-install-command="${esc(r.command)}" aria-label="Copy command for ${esc(r.id)}">Copy command</button>` : ''}`,
+      ]))}</div>`;
+    }
     h += stOptimize(d, wl.optimize);
     if ((d.finished || []).length) { const cut = Date.now() - stFinDays * 86400e3, fin = d.finished.filter((f) => f.at >= cut), when = (t) => (Date.now() - t > 864e5 ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : stHm(t));
       h += `<div class="stfin"><span class="meta" id="stFinLabel">${stFinLabel(stFinDays)}</span><select id="stFinDays" class="stfsel" aria-label="Days to look back" title="How many days back the finished strip looks">${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}"${n === stFinDays ? ' selected' : ''}>${n} ${n === 1 ? 'day' : 'days'}</option>`).join('')}</select>${fin.length ? fin.map((f) => `<span class="stfc strow" data-dir="${esc(f.dir)}" data-tip="${esc(`finished ${when(f.at)}${f.pct != null ? `, verify estimate ${f.pct}%` : ''}`)}">${stMiniRing(f.pct)}${esc(f.dir)}<em>${f.pct != null ? `${f.pct}%` : ''} · ${ago(f.at)}</em></span>`).join('') : '<span class="meta">none in this window</span>'}</div>`; }
@@ -3335,6 +3354,14 @@ function cpyText(k) {
   return [`Project ${r.name}${r.label && r.label !== r.name ? ` (${r.label})` : ''}`, p ? `Status: ${p.status || '-'}, ${p.pct ?? '?'}% (${p.done}/${p.total} milestones)` : 'No progress estimate', p?.goal ? `Goal: ${p.goal}` : '', p?.step ? `Current step: ${p.step}` : '', r.running?.length ? `Running: ${[...new Set(r.running)].slice(0, 12).join(', ')}` : '', r.last ? `Last activity: ${ago(r.last)} ago` : '', r.all ? `Tokens all time: ${fmt(r.all.tokens)}${r.all.est ? `, est. API ${usd2(r.all.est)}` : ''}${r.all.paid ? `, ${usd2(r.all.paid)} paid` : ''}` : '', r.real?.usd != null ? `Real spend: ${usd2(r.real.usd)}` : ''].filter(Boolean).join('\n');
 }
 document.addEventListener('click', (e) => { const g = e.target.closest('.cpy'); if (!g) return; e.preventDefault(); e.stopImmediatePropagation(); const t = cpyText(g.dataset.k); if (t) stCopy(t).then(() => { g.classList.add('cp'); setTimeout(() => g.classList.remove('cp'), 900); }); }, true);
+// T15 install queue owner command, with the existing clipboard fallback.
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-install-command]');
+  if (!button) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  stCopy(button.dataset.installCommand).then(() => { button.textContent = 'Copied'; })
+    .catch(() => { button.textContent = 'Copy failed; select command in queue status'; });
+}, true);
 function stCopy(t) { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t); const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); return Promise.resolve(); }
 $('stBody').addEventListener('click', (e) => { const g = e.target.closest('.stpg'); if (!g || !stLast) return; e.stopImmediatePropagation(); const p = stLast.plans.find((x) => x.dir === g.dataset.dir); if (!p) return; stCopy(stMeta(p)).then(() => { g.classList.add('cp'); setTimeout(() => g.classList.remove('cp'), 900); }); }, true);
 $('stBody').addEventListener('click', (e) => { const b = e.target.closest('button[data-comb],button[data-split]'); if (!b) return;

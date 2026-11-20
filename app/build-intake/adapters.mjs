@@ -86,7 +86,10 @@ export function makeBuildAdapters({ dataDir = DATA, runDir = RUN, env = process.
   }
   async function dispatch(intent) {
     const b = intent.build, w = b.answers.roles.worker;
-    const gateFile = fs.existsSync(path.join(runDir, 'bin', 'jev-gate')) ? path.join(runDir, 'bin', 'jev-gate') : path.resolve(import.meta.dirname, '../../tools/addons/jev-gate');
+    // decisions-gate (was jev-gate): the run folder's copy first, then the bundled add-on. The [jev...] tags below are the
+    // old tag names, which every guard version accepts.
+    const gateFile = ['decisions-gate', 'jev-gate'].map((n) => path.join(runDir, 'bin', n)).find((f) => fs.existsSync(f))
+      || path.resolve(import.meta.dirname, '../../tools/addons/decisions-gate');
     const task = `Build ${b.answers.identity.name} at ${b.answers.tier}; spec ${b.source.specPath}.`;
     const fresh = await exec('python3', [gateFile, 'check', task], { env });
     const match = String(fresh.stdout || '').match(/Jev picked ([\w-]+).*?effort ([\w]+)\./s);

@@ -24,9 +24,10 @@ export function setupAdapter(t,{malicious=false,guard=true,builderSource='export
  const tracker=fixtureCommand(root,'fixture-tracker',"process.stdout.write(process.argv[2]==='start'?'fixture-tracked-job\\n':'finished\\n');\n");
  const requiredTests=[{file:'check.mjs',name:'sum meets contract'}];
  const checks=[{id:'behavior',argv:[process.execPath,'--test',...checkFlags,'check.mjs'],requiredTests,adversarial:true},{id:'regression',argv:[process.execPath,'--test',...checkFlags,'check.mjs'],requiredTests},{id:'reproduction',stages:['failureAnalysis'],argv:[process.execPath,'--test',...checkFlags,'check.mjs'],requiredTests,expectedExitCode:1},{id:'bundle-integrity',stages:['testAuthoring','testReview'],argv:[process.execPath,'--check','check.mjs']}];let launches=0;
+ // Use the controller fixture clock so VM wall-clock resync cannot reverse evidence times.
  const provenance=createSealer();
- const adapter=new SuperAgentWorkerAdapter({sourceRoot:source,workspaceRoot:workspaces,evidenceRoot:path.join(data,'evidence'),testPaths:['check.mjs'],checks,fixture:true,
-  admitLaunch:async({run})=>{launches++;return{allowed:guard,harness:run.harness,model:'fixture-model',modelTier:run.modelTier,tracked:true,gated:true,timeoutSeconds:5,env:{PATH:process.env.PATH,HOME:root,AGENTGLIM_CODEX_BIN:fake.bin,AGENTGLIM_JOBS_TRACK:tracker.bin}};},
+ const adapter=new SuperAgentWorkerAdapter({sourceRoot:source,workspaceRoot:workspaces,evidenceRoot:path.join(data,'evidence'),testPaths:['check.mjs'],checks,fixture:true,clock:()=>100000,
+  admitLaunch:async({run})=>{launches++;return{allowed:guard,harness:run.harness,model:'fixture-model',modelTier:run.modelTier,tracked:true,gated:true,timeoutSeconds:30,env:{PATH:process.env.PATH,HOME:root,AGENTGLIM_CODEX_BIN:fake.bin,AGENTGLIM_JOBS_TRACK:tracker.bin}};},
   isolate:async()=>({isolatedWorkspace:true,protectedVerdicts:true,protectedTests:true,contractOnly:true,launch:async f=>f()}),executeChecks:executeCommandChecks});
  const testsHash=hash([{name:'check.mjs',hash:manifest(source).entries.find(x=>x.name==='check.mjs').hash}]);
  const contract=makeContract({runId:'adapter-run',taskId:'sum-task',planId:'01-fixture',base:manifest(source,{exclude:['check.mjs']}).hash,writeScope:['src'],testsHash,selection,checks:[{id:'behavior',requirement:'acceptance',criterion:'Sum adds positive operands'},{id:'regression',requirement:'regressions',criterion:'Sum still adds negative operands'}]});

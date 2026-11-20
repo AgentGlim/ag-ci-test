@@ -21,7 +21,7 @@ export function cooldownMinutes() {
 // The launcher records the concrete model, while Jev names a routing option.
 export function modelKey(model) {
   const m = String(model || '').toLowerCase().replace(/^(?:gofree|zen|agy):/, '').split('/').at(-1);
-  const codex = m.match(/^gpt-6(?:\.1)?-(sol|astra|terra|luna)$/);
+  const codex = m.match(/^gpt-6(?:\.[12])?-(sol|astra|terra|luna)$/);
   if (codex) return `codex-${codex[1]}`;
   const claude = m.match(/^(?:claude-)?(opus|fable|sonnet|haiku)(?:-\d.*)?$/);
   if (claude) return `claude-${claude[1]}`;

@@ -105,16 +105,18 @@ test('the release allowlist carries everything the router imports', (t) => {
   assert.equal(leak.status, 0, `${leak.stdout}${leak.stderr}`);
 });
 
-test('jev-gate refuses a launch when the router cannot run', (t) => {
-  const home = scratch(t, 'jev-gate-closed-'), dest = path.join(home, 'export');
+// decisions-gate was jev-gate (owner 2026-11-19); jev-gate is now a wrapper. Both names run the same gate.
+const copyGates = (dest) => { for (const f of ['decisions-gate', 'jev-gate']) fs.copyFileSync(path.join(ROOT, 'tools', 'addons', f), path.join(dest, 'tools', 'addons', f)); };
+for (const name of ['decisions-gate', 'jev-gate']) test(`${name} refuses a launch when the router cannot run`, (t) => {
+  const home = scratch(t, `${name}-closed-`), dest = path.join(home, 'export');
   fs.mkdirSync(path.join(dest, 'tools', 'addons'), { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'tools', 'addons', 'jev-gate'), path.join(dest, 'tools', 'addons', 'jev-gate'));
+  copyGates(dest);
   // no harness/bin in this export: the router cannot start, which used to count as "Jev unavailable" -> allow
-  const gate = path.join(dest, 'tools', 'addons', 'jev-gate'), e = env(path.join(home, 'data'));
+  const gate = path.join(dest, 'tools', 'addons', name), e = env(path.join(home, 'data'));
   const check = spawnSync(PYTHON, [gate, 'check', 'rename a variable'], { cwd: dest, env: e, encoding: 'utf8' });
   assert.equal(check.status, 2, 'a routing failure must not be an allow (exit 0)');
-  assert.match(check.stdout, /routing could not run/);
-  assert.match(check.stdout, /jev-override/, 'the refusal names the escape hatch');
+  assert.match(check.stdout, /Decisions routing could not run/);
+  assert.match(check.stdout, /decisions-override/, 'the refusal names the escape hatch');
   const hook = (prompt) => spawnSync(PYTHON, [gate, 'claude'], { cwd: dest, env: e, encoding: 'utf8',
     input: JSON.stringify({ tool_input: { prompt, description: 'rename a variable' } }) });
   const denied = hook('rename a variable');
@@ -122,9 +124,17 @@ test('jev-gate refuses a launch when the router cannot run', (t) => {
   const decision = JSON.parse(denied.stdout).hookSpecificOutput;
   assert.equal(decision.permissionDecision, 'deny');
   assert.match(decision.permissionDecisionReason, /routing could not run/);
-  const tagged = hook('[jev: claude-sonnet medium] rename a variable'); // explicit override still launches
-  assert.equal(tagged.status, 0);
-  assert.equal(tagged.stdout.trim(), '');
+  for (const tag of ['[jev: claude-sonnet medium]', '[decisions: claude-sonnet medium]', '[decisions-override: owner-asked]']) {
+    const tagged = hook(`${tag} rename a variable`); // new and old tags still launch
+    assert.equal(tagged.status, 0);
+    assert.equal(tagged.stdout.trim(), '', tag);
+  }
+  for (const tag of ['[jev: claude-sonnet medium]', '[decisions: claude-sonnet medium]']) {
+    const routed = spawnSync(PYTHON, [gate, 'check', `${tag} rename a variable`], { cwd: dest, env: e, encoding: 'utf8' });
+    assert.equal(routed.status, 0, tag); assert.equal(routed.stdout.trim(), 'routed');
+  }
+  const rows = fs.readFileSync(path.join(home, 'data', 'jev-gate.ndjson'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.ok(rows.length && rows.every((r) => r.router === 'jev'), 'every gate record names the router model');
 });
 
 test('jev-gate allows the router fallback when Jev itself errors', (t) => {
@@ -134,11 +144,36 @@ test('jev-gate allows the router fallback when Jev itself errors', (t) => {
   copyTree(path.join(ROOT, 'app'), path.join(dest, 'app'));
   fs.copyFileSync(path.join(ROOT, 'harness', 'config.mjs'), path.join(dest, 'harness', 'config.mjs'));
   for (const file of ROUTER_MODULES) fs.copyFileSync(path.join(BIN, file), path.join(dest, 'harness', 'bin', file));
-  const gate = path.join(dest, 'tools', 'addons', 'jev-gate');
-  fs.copyFileSync(path.join(ROOT, 'tools', 'addons', 'jev-gate'), gate);
+  copyGates(dest);
+  const gate = path.join(dest, 'tools', 'addons', 'decisions-gate');
   // the router answers with its fallback pick and "error" (no key), so the launch is routed, not refused
   const check = spawnSync(PYTHON, [gate, 'check', 'rename a variable'], { cwd: dest, env: env(path.join(home, 'data')), encoding: 'utf8' });
   assert.equal(check.status, 2, check.stderr);
   assert.match(check.stdout, /Jev picked/);
+  assert.match(check.stdout, /\[decisions: \S+ \S+\]/, 'the gate asks for the new tag name');
   assert.doesNotMatch(check.stdout, /routing could not run/);
+});
+
+test('jev-gate wrapper passes arguments and stdin through and fails clearly without decisions-gate', (t) => {
+  const home = scratch(t, 'jev-gate-wrapper-'), dest = path.join(home, 'export');
+  fs.mkdirSync(path.join(dest, 'tools', 'addons'), { recursive: true });
+  const wrapper = path.join(dest, 'tools', 'addons', 'jev-gate');
+  fs.copyFileSync(path.join(ROOT, 'tools', 'addons', 'jev-gate'), wrapper);
+  const missing = spawnSync(PYTHON, [wrapper, 'check', 'x'], { cwd: dest, encoding: 'utf8' });
+  assert.equal(missing.status, 3); assert.match(missing.stderr, /decisions-gate/);
+  fs.writeFileSync(path.join(dest, 'tools', 'addons', 'decisions-gate'), 'import sys, json\nprint(json.dumps({"argv": sys.argv[1:], "stdin": sys.stdin.read()}))\n');
+  const r = spawnSync(PYTHON, [wrapper, 'check', 'a b'], { cwd: dest, encoding: 'utf8', input: 'hook json' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { argv: ['check', 'a b'], stdin: 'hook json' });
+});
+
+test('decisions-gate config-path: new folder, old folder only as a fallback, env override', (t) => {
+  const home = scratch(t, 'decisions-gate-config-'), gate = path.join(ROOT, 'tools', 'addons', 'decisions-gate');
+  const run = (extra) => spawnSync(PYTHON, [gate, 'config-path'], { env: { PATH: process.env.PATH, HOME: home, XDG_CONFIG_HOME: path.join(home, 'cfg'), ...extra }, encoding: 'utf8' }).stdout.trim();
+  assert.equal(run(), path.join(home, 'cfg', 'decisions-gate'));
+  fs.mkdirSync(path.join(home, 'cfg', 'jev-gate'), { recursive: true });
+  assert.equal(run(), path.join(home, 'cfg', 'jev-gate'), 'only the old folder exists');
+  fs.mkdirSync(path.join(home, 'cfg', 'decisions-gate'));
+  assert.equal(run(), path.join(home, 'cfg', 'decisions-gate'), 'the new folder wins');
+  assert.equal(run({ DECISIONS_GATE_CONFIG: path.join(home, 'x') }), path.join(home, 'x'));
 });

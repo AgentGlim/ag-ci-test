@@ -2,9 +2,10 @@
 //   settings.defaults.json  <  user file  <  env
 // User file: $AGENTGLIM_CONFIG, else $XDG_CONFIG_HOME/agentglim/harness.json, else ~/.config/agentglim/harness.json.
 // Env: AGENTGLIM_PLANS, AGENTGLIM_WORK, AGENTGLIM_DATA (app/paths.mjs), AGENTGLIM_RUN (harness folder),
-//      AGENTGLIM_JEV_ROUTES (Jev rules file).
+//      AGENTGLIM_DECISIONS_ROUTES (Decisions routing rules file; the old AGENTGLIM_JEV_ROUTES still works).
+// The "decisions" block (was "jev", owner 2026-11-19) is returned under both keys, so cfg.jev readers keep working.
 // Path strings may use ~, {plans}, {run}, {agentglim} and {data}; harnessConfig() returns them expanded.
-// If the Jev rules file is missing, jev-routes.example.json next to this file is used.
+// If the Decisions routing rules file is missing, jev-routes.example.json next to this file is used.
 // CLI (for shell scripts; every printed value must be shell-safe, else exit 4), as app/settings.mjs or harness/config.mjs:
 //   node settings.mjs                  the merged settings as JSON
 //   node settings.mjs --get KEY        one value by dotted key: a scalar as is, a list space-separated; exit 3 when unset (null)
@@ -26,6 +27,14 @@ const merge = (a, b) => {
   return out;
 };
 
+// "decisions" block (was "jev", owner 2026-11-19): merged under both keys, the new key wins. Kept here, not imported,
+// so the harness scripts that load this file alone keep working (decisions-routing.mjs has the same rule for the app).
+function migrateHarness(cfg) {
+  if (!isObj(cfg) || (!isObj(cfg.jev) && !isObj(cfg.decisions))) return cfg;
+  const both = { ...(isObj(cfg.jev) ? cfg.jev : {}), ...(isObj(cfg.decisions) ? cfg.decisions : {}) };
+  return { ...cfg, decisions: both, jev: both };
+}
+
 export function userConfigPath() {
   if (process.env.AGENTGLIM_CONFIG) return process.env.AGENTGLIM_CONFIG;
   const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
@@ -36,7 +45,7 @@ export function harnessConfig() {
   const defaults = readJson(path.join(HERE, 'settings.defaults.json')) || {};
   const userFile = userConfigPath();
   const user = readJson(userFile);
-  const cfg = merge(defaults, user || {});
+  const cfg = migrateHarness(merge(migrateHarness(defaults), migrateHarness(user || {})));
   const plans = PLANS;
   const run0 = process.env.AGENTGLIM_RUN || String(cfg.run || '{plans}/_run');
   const vars = { plans, agentglim: AGENTGLIM_ROOT, data: DATA };
@@ -45,9 +54,11 @@ export function harnessConfig() {
   const walk = (v) => (typeof v === 'string' ? sub(v) : Array.isArray(v) ? v.map(walk) : isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === '_doc' ? x : walk(x)])) : v);
   const out = walk(cfg);
   out.run = vars.run;
-  if (process.env.AGENTGLIM_JEV_ROUTES) out.jev = { ...out.jev, routes: process.env.AGENTGLIM_JEV_ROUTES };
+  const routesEnv = process.env.AGENTGLIM_DECISIONS_ROUTES || process.env.AGENTGLIM_JEV_ROUTES;
+  if (routesEnv) out.decisions = { ...out.decisions, routes: routesEnv };
   const example = path.join(HERE, 'jev-routes.example.json');
-  if (out.jev && !fs.existsSync(out.jev.routes) && fs.existsSync(example)) out.jev = { ...out.jev, routes: example, example: true };
+  if (out.decisions && !fs.existsSync(out.decisions.routes) && fs.existsSync(example)) out.decisions = { ...out.decisions, routes: example, example: true };
+  if (out.decisions) out.jev = out.decisions; // old key, same object
   out.roots = { plans, run: vars.run, agentglim: AGENTGLIM_ROOT, data: DATA };
   out.source = { defaults: path.join(HERE, 'settings.defaults.json'), user: userFile, userFound: !!user };
   return out;

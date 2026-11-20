@@ -40,7 +40,7 @@ test('first-run status asks for everything on a fresh machine; apply saves setup
   const { home, env } = mk(); t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const s0 = JSON.parse(cli(env, 'status').stdout);
   assert.equal(s0.needsSetup, true);
-  assert.deepEqual(s0.questions, ['harnesses', 'jev', 'budget', 'goals']);
+  assert.deepEqual(s0.questions, ['harnesses', 'decisions', 'budget', 'goals']);
   assert.ok(s0.harnesses.some((h) => h.id === 'codex') && s0.harnesses.some((h) => h.id === 'claude'));
   const ans = path.join(home, 'answers.json');
   fs.writeFileSync(ans, JSON.stringify({ harnesses: ['codex'], jev: false, apiDailyUsd: 7, goals: [{ title: 'Ship the demo app', next_action: 'Write the list', metric: 'Users' }, 'Learn Rust'] }));
@@ -48,7 +48,7 @@ test('first-run status asks for everything on a fresh machine; apply saves setup
   const out = JSON.parse(r.stdout);
   assert.equal(out.ok, true); assert.deepEqual(out.setup.harnesses, ['codex']);
   const setup = JSON.parse(fs.readFileSync(path.join(env.AGENTGLIM_DATA, 'setup.json'), 'utf8'));
-  assert.equal(setup.setupComplete, true); assert.equal(setup.harnesses.codex, true); assert.equal(setup.harnesses.claude, false); assert.equal(setup.budget.apiDailyUsd, 7); assert.equal(setup.jev.on, false);
+  assert.equal(setup.setupComplete, true); assert.equal(setup.harnesses.codex, true); assert.equal(setup.harnesses.claude, false); assert.equal(setup.budget.apiDailyUsd, 7); assert.equal(setup.jev.on, false); assert.equal(setup.decisions.on, false); // old answer key "jev" still works
   assert.ok(fs.existsSync(path.join(env.AGENTGLIM_DATA, 'setup-complete')));
   const goals = JSON.parse(fs.readFileSync(path.join(env.AGENTGLIM_DATA, 'goals/goals.json'), 'utf8'));
   assert.deepEqual(goals.goals.map((g) => g.id), ['ship_the_demo_app', 'learn_rust']);
@@ -91,11 +91,11 @@ test('global note installer is idempotent, keeps the user\'s own text and backs 
   assert.equal(fs.existsSync(path.join(h2, '.codex')), false);
 });
 
-test('Setup page layout: Harnesses and Jev open, five collapsed sections, no Optional add-ons', () => {
+test('Setup page layout: Harnesses and Decisions routing open, five collapsed sections, no Optional add-ons', () => {
   const html = read('app/setup.html');
   assert.doesNotMatch(html, /Optional add-ons/); assert.doesNotMatch(html, /id="addonList"/);
-  const order = [...html.matchAll(/<(section|details) class="card" id="(\w+)"/g)].map((m) => [m[1], m[2]]);
-  assert.deepEqual(order.map((o) => o[1]), ['intro', 'harnesses', 'jev', 'free', 'media', 'custom', 'other', 'budget']);
+  const order = [...html.matchAll(/<(section|details) class="card" id="([\w-]+)"/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(order.map((o) => o[1]), ['intro', 'harnesses', 'decisions-routing', 'free', 'media', 'custom', 'other', 'budget']);
   assert.deepEqual(order.filter((o) => o[0] === 'details').map((o) => o[1]), ['free', 'media', 'custom', 'other', 'budget']);
   assert.ok(order.filter((o) => o[0] === 'section').map((o) => o[1]).includes('harnesses'));
   assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
@@ -103,7 +103,7 @@ test('Setup page layout: Harnesses and Jev open, five collapsed sections, no Opt
   assert.doesNotMatch(html, /<h2>7\. Other<\/h2>/);
   assert.match(html, /id="subs"/); // plans/subscriptions stay, inside the Harnesses card
   assert.match(html, /href="\/dependencies"/); // the dependency report link moved to Local AI
-  assert.ok(html.indexOf('id="harnesses"') < html.indexOf('id="jev"') && html.indexOf('id="jev"') < html.indexOf('id="free"'));
+  assert.ok(html.indexOf('id="harnesses"') < html.indexOf('id="decisions-routing"') && html.indexOf('id="decisions-routing"') < html.indexOf('id="free"'));
 });
 
 test('first launch serves the normal dashboard (no redirect to Harness) and Setup still saves', async (t) => {
