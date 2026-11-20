@@ -1,3 +1,5 @@
+import { gateFeatureRows } from './feature-ci-verdict.mjs';
+
 // Stored progress is not process liveness. Only tracked running jobs can back a running chip.
 const words = (s) => String(s ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
 function mentions(job, item) {
@@ -20,7 +22,7 @@ function mentions(job, item) {
 export function liveStatus(items, plan, jobs = []) {
   const live = jobs.filter((j) => j.project === plan && isLiveJob(j));
   const matches = live.map((j) => items.filter((it) => mentions(j, it)));
-  return items.map((it) => {
+  return gateFeatureRows(items, plan).map((it) => {
     if (it.status !== 'running' || matches.some((m) => !m.length || m.includes(it))) return { ...it };
     return { ...it, status: 'in progress', statusHint: `idle since ${it.updated || it.finished || 'unknown date'}` };
   });

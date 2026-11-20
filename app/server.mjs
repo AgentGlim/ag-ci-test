@@ -153,6 +153,7 @@ import { watchersView } from './heartbeats.mjs'; // SuperAgent heartbeats: priva
 import { subagentStatus } from './subagent-status.mjs';
 import { sessionShells, sessionWorkRows } from './session-work.mjs';
 import { subscriptionTotals } from './price-data.mjs';
+import { gateFeatureRows } from './feature-ci-verdict.mjs';
 import { liveStatus as displayLiveStatus } from './live-status.mjs';
 import { localStatus, localSwitch } from './local.mjs'; // Local status section
 import { has, emptyModes, emptyAgyBench } from './empty-fallbacks.mjs'; // 200 + empty shape when the harness is absent
@@ -1261,7 +1262,7 @@ function selfStatus() {
 function featureAudit() {
   if (!integrations.remotePlan) return null;
   const root = `${PLANS}/${integrations.remotePlan}`, b = `${root}/_build`;
-  let items; try { items = JSON.parse(readText(`${b}/subitems.json`)).items; } catch { return null; }
+  let items; try { items = gateFeatureRows(JSON.parse(readText(`${b}/subitems.json`)).items, integrations.remotePlan); } catch { return null; }
   if (!items?.length || items.some((i) => i.status !== 'done')) return null;
   const scores = [];
   for (const item of items) {
