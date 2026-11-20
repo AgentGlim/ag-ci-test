@@ -9,6 +9,7 @@ import { readProcessStat, procRoot } from './proc.mjs';
 import { python } from './python.mjs';
 import { execFile } from 'node:child_process';
 import { foldWrappers } from './working.mjs';
+import { featureCiVerdict } from './feature-ci-verdict.mjs';
 import { foldAttempts } from './plan-status.mjs';
 
 // Claude queue / agent.sh kind aliases -> model ids (follow-up 2026-11-13: opus48 claudeq jobs showed as Sonnet)
@@ -32,7 +33,7 @@ export function readTracked(dir) {
   let names = [];
   try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.json')); } catch { return []; }
   const out = [];
-  for (const n of names) { try { const j = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); if (isRealJob(j)) out.push(j); } catch {} }
+  for (const n of names) { try { const j = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')); if (isRealJob(j)) out.push(withFeatureVerdict(j, RUN, procRoot(), Date.now())); } catch {} }
   return out;
 }
 
@@ -56,11 +57,18 @@ export const isOneOff = (j, now = Date.now()) => (!j.kind || j.kind === 'one-on-
 export function readFeatures(file) {
   try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(j.items) ? j.items : []; } catch { return []; }
 }
-export function saveFeatures(file, list) {
+export function saveFeatures(file, list, { run = RUN } = {}) {
   if (!file) return [];
-  const have = readFeatures(file), ids = new Set(have.map((x) => x.id)); let add = 0;
+  const saved = readFeatures(file);
   // a saved item follows its job record when that record is re-attributed or relabelled (jobs-track fix)
   const byId = new Map(list.filter((j) => j && j.id).map((j) => [j.id, j]));
+  const have = saved.filter(item => {
+    const job = byId.get(item.id) ?? { ...item, project: item.plan };
+    const verdict = featureCiVerdict(job, run);
+    return verdict == null || verdict === '0';
+  });
+  const ids = new Set(have.map(item => item.id));
+  let add = saved.length - have.length;
   for (const it of have) {
     const j = byId.get(it.id); if (!j) continue;
     const plan = j.isPlan ? j.project : null, label = cleanLabel(j.label || it.label);
@@ -73,7 +81,9 @@ export function saveFeatures(file, list) {
     // only hand-offs (subagents, agent.sh, queue takes) are kept; the SuperAgent's own chat turns (one-on-one) are not sub-tasks
     if (!j || j.status !== 'done' || !j.isPlan || ids.has(j.id) || jobSize(j) !== 'feature' || !j.kind || j.kind === 'one-on-one' || j.kind === 'autonomous') continue;
     if (typeof j.project === 'string' && (j.project.startsWith('_') || j.project === 'jobtrack-test')) continue;
-    have.push({ id: j.id, plan: j.project, label: cleanLabel(j.label || 'job'), finished: new Date(j.ended || Date.now()).toISOString().slice(0, 10), harness: j.harness || null, model: j.model || null, kind: j.kind || null, retryCount: j.retryCount || 0, retryHistory: j.retryHistory || [], outdir: j.outdir || null, stepId: j.stepId, step: j.step, round: j.round, revision: j.revision, started: j.started || null, ended: j.ended || null }); ids.add(j.id); add++;
+    const verdict = featureCiVerdict(j, run);
+    if (verdict != null && verdict !== '0') continue;
+    have.push({ ciManaged: verdict === '0' || undefined, id: j.id, plan: j.project, label: cleanLabel(j.label || 'job'), finished: new Date(j.ended || Date.now()).toISOString().slice(0, 10), harness: j.harness || null, model: j.model || null, kind: j.kind || null, retryCount: j.retryCount || 0, retryHistory: j.retryHistory || [], outdir: j.outdir || null, stepId: j.stepId, step: j.step, round: j.round, revision: j.revision, started: j.started || null, ended: j.ended || null }); ids.add(j.id); add++;
   }
   if (add) { try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify({ items: have }, null, 1)); fs.renameSync(file + '.tmp', file); } catch {} }
   return have;
@@ -84,7 +94,7 @@ export function saveFeatures(file, list) {
 // waits on background work with no new records for 20 min. Finished records keep their status: done / failed / stopped.
 export function shownStatus(j) {
   if (j.status !== 'running') return j.status || 'done';
-  if (j.activity === 'finished') return 'done';
+  if (j.activity === 'finished' && !j.ciManaged) return 'done';
   if (j.activity === 'idle') return 'idle';
   return 'running';
 }
@@ -143,10 +153,22 @@ export function endState(rc) {
 // a pid-less subagent record that never got an agent id: a blocked or retried Agent call. It is ended when a newer
 // record of the same session and label has an id, or after NEVER_STARTED_MS (it would otherwise run forever).
 export const NEVER_STARTED_MS = 6 * 3600e3;
-export function liveJobs(list, { now = Date.now(), root = procRoot(), quietMs = 20 * 60e3 } = {}) {
+function withFeatureVerdict(job, run, root, now) {
+  const rc = featureCiVerdict(job, run);
+  if (rc == null || rc === 'review' || job.stoppedBy) return job;
+  if (rc === '82' && job.status === 'running' && job.pid && pidAlive(job.pid, job.pidStart, root)) {
+    return { ...job, ciManaged: true };
+  }
+  const [status, endReason] = endState(rc);
+  return { ...job, ciManaged: true, status, rc, endReason, ended: job.ended || now };
+}
+
+export function liveJobs(list, { now = Date.now(), root = procRoot(), quietMs = 20 * 60e3, run = RUN } = {}) {
   const ided = list.filter((j) => j && j.kind === 'subagent' && j.agentId);
   return list.map((j) => {
     if (!j) return j;
+    const gated = withFeatureVerdict(j, run, root, now);
+    if (gated !== j) return gated;
     if (j.status === 'running' && !j.pid && j.kind === 'subagent' && !j.agentId) {
       const superseded = ided.some((x) => x.sessionId && x.sessionId === j.sessionId && x.label === j.label && (x.started || 0) >= (j.started || 0));
       if (superseded || now - (j.started || now) > NEVER_STARTED_MS) return { ...j, status: 'stopped', endReason: 'never started', ended: j.ended || now };

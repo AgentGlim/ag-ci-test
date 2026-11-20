@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Require a matching Linux CI receipt before saving a CI-managed feature as built.
+
 ## 0.2.23
 
 - "Jev routing" is now "Decisions routing". The page lives at `/decisions-routing` (`/routing` and `/jev-routing` redirect there; `/api/routing`, `/api/routing-feedback` and `/api/setup/jev` still answer). Its table has a Router column: the model that made each decision, `jev` or `gemini-decision`. Only the router model keeps a model name.

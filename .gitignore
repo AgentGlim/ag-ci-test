@@ -115,6 +115,7 @@ ffmpeg2pass*
 !/docs/
 /docs/*
 !/docs/dependencies.html
+!/docs/feature-ci.md
 !/docs/install.md
 !/docs/keys.md
 !/docs/settings.md
